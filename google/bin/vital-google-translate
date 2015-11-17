@@ -9,8 +9,8 @@ if(!VITAL_HOME) {
 	System.exit(-1);
 }
 
-if(args.length != 2) {
-	System.err.println("usage: vital-twitter-search <search_string> <output_blockfile|-print>")
+if(args.length != 3) {
+	System.err.println("usage: vital-google-translate <target_lang> <input_blockfile> <output_blockfile|-print>")
 	System.err.println("       if <output_block_file> = '-print' then the results are printed to the console")
 	System.exit(-1);
 }
@@ -19,7 +19,7 @@ if(args.length != 2) {
 //this script directory
 def binDir = new File(getClass().protectionDomain.codeSource.location.path).parentFile.getAbsolutePath() + '/';
 
-def scriptBodyFile = new File(binDir, 'vital-twitter-search.groovy')
+def scriptBodyFile = new File(binDir, 'vital-google-translate.groovy')
 
 List jars = [];
 

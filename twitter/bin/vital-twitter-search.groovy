@@ -4,6 +4,7 @@ def SERVICE_PROFILE = 'primelocal'
 def SERVICE_KEY     = 'serv-serv-serv'
 
 def QUERY = args[0]
+def OUTPUT_FILE = args[1]
 
 def TWITTER_KEY = 'key'
 def TWITTER_SECRET = 'secret'
@@ -28,11 +29,36 @@ def UNTIL = null
 
 /*   END OF CONFIG   */
 
-
-
+import ai.vital.vitalsigns.block.BlockCompactStringSerializer;
 import ai.vital.vitalsigns.model.VitalServiceKey
 import ai.vital.vitalservice.factory.VitalServiceFactory
 import com.vitalai.domain.social.Tweet
+
+
+println "Search string: ${QUERY}"
+
+
+boolean pretty = ( OUTPUT_FILE == '-print' || OUTPUT_FILE == '--print') 
+
+File outputFile = null
+
+if(!pretty) {
+	
+	outputFile = new File(OUTPUT_FILE)
+	
+	println "Output file: ${outputFile.absolutePath}"
+	
+	if(outputFile.exists()) {
+		System.err.println("Output file already exists: ${outputFile.absolutePath}")
+		return
+	}
+	
+	
+} else {
+
+	println "Printing results to the console"	
+
+}
 
 //necessary, as groovy shell does not 
 ai.vital.vitalsigns.VitalSigns.get().registerOntology(new com.vitalai.domain.nlp.ontology.Ontology(), 'vital-nlp-groovy-0.2.300.jar')
@@ -62,7 +88,7 @@ def resultList = vitalService.callFunction('commons/scripts/TwitterSearchScript.
 
 println "STATUS: ${resultList.status}"
 
-println "TOTAL RESULTS: ${resultList.totalResults}"
+BlockCompactStringSerializer writer = outputFile != null ?  new BlockCompactStringSerializer(outputFile) : null
 
 int i = 0
 
@@ -70,19 +96,33 @@ for(Tweet tweet : resultList) {
 	
 	i++
 	
-	long tweetID = tweet.tweetID.longValue()
+	if(writer != null) {
+		
+		writer.startBlock()
+		writer.writeGraphObject(tweet)
+		writer.endBlock()
+		
+	} else {
 	
-	long authorID = tweet.authorID.longValue()
+		long tweetID = tweet.tweetID.longValue()
+		
+		long authorID = tweet.authorID.longValue()
+		
+		Date pubDate = tweet.publicationDate.getDate()
+		
+		String body = tweet.body
+		
+		String authorName = tweet.authorName
+		
+		println "${i}. [${tweetID}] ${pubDate} ${authorName}: ${body}"
 	
-	Date pubDate = tweet.publicationDate.getDate()
-	
-	String body = tweet.body
-	
-	String authorName = tweet.authorName
-	
-	println "${i}. ${pubDate} ${authorName}: ${body}"
+	}
 	
 }
+
+if(writer != null) writer.close()
+
+println "Tweets iterated: ${i}"
 
 
 

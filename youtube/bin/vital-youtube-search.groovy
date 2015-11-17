@@ -1,10 +1,10 @@
 /*   CONFIG PARAMS   */
 
-import com.vitalai.domain.social.YouTubeComment;
 def SERVICE_PROFILE = 'primelocal'
 def SERVICE_KEY     = 'serv-serv-serv'
 
 def VIDEO_ID = args[0]
+def OUTPUT_FILE = args[1]
 
 def YOUTUBE_API_KEY = 'key'
 
@@ -22,11 +22,36 @@ def PARTS = 'snippet,replies' // 'snippet', 'replies'
 /*   END OF CONFIG   */
 
 
-
+import ai.vital.vitalsigns.block.BlockCompactStringSerializer;
 import ai.vital.vitalsigns.model.VitalServiceKey
 import ai.vital.vitalservice.factory.VitalServiceFactory
+import com.vitalai.domain.social.YouTubeComment;
 
-import com.vitalai.domain.social.Tweet
+
+println "Video ID:: ${VIDEO_ID}"
+
+
+boolean pretty = ( OUTPUT_FILE == '-print' || OUTPUT_FILE == '--print') 
+
+File outputFile = null
+
+if(!pretty) {
+	
+	outputFile = new File(OUTPUT_FILE)
+	
+	println "Output file: ${outputFile.absolutePath}"
+	
+	if(outputFile.exists()) {
+		System.err.println("Output file already exists: ${outputFile.absolutePath}")
+		return
+	}
+	
+	
+} else {
+
+	println "Printing results to the console"	
+
+}
 
 //necessary, as groovy shell does not 
 ai.vital.vitalsigns.VitalSigns.get().registerOntology(new com.vitalai.domain.nlp.ontology.Ontology(), 'vital-nlp-groovy-0.2.300.jar')
@@ -50,7 +75,7 @@ def resultList = vitalService.callFunction('commons/scripts/YouTubeCommentsScrip
 
 println "STATUS: ${resultList.status}"
 
-println "TOTAL RESULTS: ${resultList.totalResults}"
+BlockCompactStringSerializer writer = outputFile != null ?  new BlockCompactStringSerializer(outputFile) : null
 
 int i = 0
 
@@ -58,23 +83,43 @@ for(YouTubeComment comment : resultList) {
 	
 	i++
 	
-	String commentID = comment.commentID
+	if(writer != null) {
+		
+		writer.startBlock()
+		
+		writer.writeGraphObject(comment)
+		
+		writer.endBlock()
+		
+	} else {
 	
-	String videoID = comment.videoID
+		String commentID = comment.commentID
+		
+		String videoID = comment.videoID
+		
+		String channelID = comment.channelID
+		
+		String text = comment.body
+		
+		String authorName = comment.authorName
+		
+		Date pubDate = comment.publicationDate.getDate()
+		
+		Integer likeCount = comment.likeCount.intValue()
+		
+		println "${i}. ${pubDate} ${authorName}: ${text}  likes: ${likeCount} [${commentID}]"
 	
-	String channelID = comment.channelID
+	}
 	
-	String text = comment.body
 	
-	String authorName = comment.authorName
 	
-	Date pubDate = comment.publicationDate.getDate()
-	
-	Integer likeCount = comment.likeCount.intValue()
-	
-	println "${i}. ${pubDate} ${authorName}: ${text}  likes: ${likeCount} [${commentID}]"
 	
 }
 
 
+if(writer != null) {
+	writer.close()
+}
+
+println "YT comments iterated: ${i}"
 

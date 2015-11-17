@@ -9,8 +9,9 @@ if(!VITAL_HOME) {
 	System.exit(-1);
 }
 
-if(args.length != 1) {
-	System.err.println("usage: vital-youtube-search <videoId>")
+if(args.length != 2) {
+	System.err.println("usage: vital-youtube-search <videoId> <output_block_file|-print>")
+	System.err.println("       if <output_block_file> = '-print' then the results are printed to the console")
 	System.exit(-1);
 }
 
