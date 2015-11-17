@@ -1,0 +1,80 @@
+#!/usr/bin/env groovy
+
+import static groovy.io.FileType.FILES
+
+String VITAL_HOME = System.getenv('VITAL_HOME')
+
+if(!VITAL_HOME) { 
+	System.err.println("VITAL_HOME environment variable not set.")
+	System.exit(-1);
+}
+
+if(args.length != 1) {
+	System.err.println("usage: vital-youtube-search <videoId>")
+	System.exit(-1);
+}
+
+
+//this script directory
+def binDir = new File(getClass().protectionDomain.codeSource.location.path).parentFile.getAbsolutePath() + '/';
+
+def scriptBodyFile = new File(binDir, 'vital-youtube-search.groovy')
+
+List jars = [];
+
+//vitalsigns
+new File(VITAL_HOME + '/vitalsigns').eachFileRecurse(FILES) {
+	if(it.name.endsWith('.jar')) {
+//		if(it.name.startsWith('xml-apis-')) return
+//		if(it.name.startsWith('xercesImpl-')) return
+ 		jars.add(it.absolutePath);
+	}
+}
+
+
+//vitalservice
+new File(VITAL_HOME + '/vitalservice').eachFileRecurse(FILES) {
+	if(it.name.endsWith('.jar')) {
+		jars.add(it.absolutePath);
+	}
+}
+
+//vitaldomain
+new File(VITAL_HOME + '/vital-domain/').eachFile(FILES) {
+	if(it.name.startsWith('VitalDomain-groovy-')) {
+		jars.add(it.absolutePath);
+	}
+}
+
+
+//domain jars
+new File(VITAL_HOME + '/domain-groovy-jar/').eachFile(FILES) {
+  if(it.name.endsWith('.jar')) {
+    jars.add(it.absolutePath);
+  }
+}
+
+
+
+def gcl = new GroovyClassLoader()
+for(String jarPath : jars) {
+	gcl.addClasspath(jarPath)
+}
+
+Binding binding = new Binding(args)
+def gs = new GroovyShell(gcl, binding)
+gs.evaluate(scriptBodyFile)
+
+//
+//Class parsedClass = gcl.parseClass(new GroovyCodeSource(scriptBodyFile))
+
+/*
+List cmd = ['java', '-cp', (String)jars.join(File.pathSeparator), scriptBodyFile.absolutePath]
+for(String a : args) {
+	cmd.add(a)
+}
+println cmd
+def process=new ProcessBuilder(cmd).redirectErrorStream(true).start()
+process.inputStream.eachLine {println it}
+
+*/
