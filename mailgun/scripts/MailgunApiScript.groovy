@@ -31,8 +31,8 @@ import org.apache.commons.httpclient.methods.multipart.StringPart;
 //import org.apache.commons.io.FileUtils;
 import org.codehaus.jackson.map.ObjectMapper;
 
-import ai.vital.prime.groovy.v2.VitalPrimeGroovyScriptV2;
-import ai.vital.prime.groovy.v2.VitalPrimeScriptInterfaceV2;
+import ai.vital.prime.groovy.VitalPrimeGroovyScript;
+import ai.vital.prime.groovy.VitalPrimeScriptInterface;
 import ai.vital.vitalservice.VitalStatus;
 import ai.vital.vitalservice.query.ResultList;
 
@@ -65,7 +65,7 @@ import org.apache.commons.httpclient.methods.multipart.StringPart;
 //import org.apache.commons.io.FileUtils;
 import org.codehaus.jackson.map.ObjectMapper;
 
-class MailgunApiScript implements VitalPrimeGroovyScriptV2 {
+class MailgunApiScript implements VitalPrimeGroovyScript {
 
 	static String API_KEY = '<KEY>'
 	static String DOMAIN = '<DOMAIN>'
@@ -86,7 +86,7 @@ class MailgunApiScript implements VitalPrimeGroovyScriptV2 {
 	
 	@Override
 	public ResultList executeScript(
-			VitalPrimeScriptInterfaceV2 scriptInterface,
+			VitalPrimeScriptInterface scriptInterface,
 			Map<String, Object> params) {
 
 		ResultList rl = new ResultList()

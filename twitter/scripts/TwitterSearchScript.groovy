@@ -16,14 +16,14 @@ import twitter4j.QueryResult;
 import twitter4j.Status;
 import twitter4j.Twitter
 import twitter4j.TwitterFactory
-import ai.vital.prime.groovy.v2.VitalPrimeGroovyScriptV2;
-import ai.vital.prime.groovy.v2.VitalPrimeScriptInterfaceV2;
+import ai.vital.prime.groovy.VitalPrimeGroovyScript;
+import ai.vital.prime.groovy.VitalPrimeScriptInterface;
 import ai.vital.vitalservice.VitalStatus;
 import ai.vital.vitalservice.query.ResultList;
 import ai.vital.vitalsigns.model.VitalApp;
 import ai.vital.vitalservice.query.ResultElement
 
-class TwitterSearchScript implements VitalPrimeGroovyScriptV2 {
+class TwitterSearchScript implements VitalPrimeGroovyScript {
 
 	
 	static synchronized Twitter getTwitter(String consumerKey, String consumerSecret) {
@@ -44,7 +44,7 @@ class TwitterSearchScript implements VitalPrimeGroovyScriptV2 {
 	
 	@Override
 	public ResultList executeScript(
-			VitalPrimeScriptInterfaceV2 scriptInterface,
+			VitalPrimeScriptInterface scriptInterface,
 			Map<String, Object> parameters) {
 
 		ResultList rl = new ResultList()

@@ -11,15 +11,15 @@ import org.apache.commons.io.IOUtils;
 
 import com.vitalai.domain.social.YouTubeComment;
 
-import ai.vital.prime.groovy.v2.VitalPrimeGroovyScriptV2
-import ai.vital.prime.groovy.v2.VitalPrimeScriptInterfaceV2
+import ai.vital.prime.groovy.VitalPrimeGroovyScript
+import ai.vital.prime.groovy.VitalPrimeScriptInterface
 import ai.vital.vitalservice.VitalStatus
 import ai.vital.vitalservice.query.ResultElement
 import ai.vital.vitalservice.query.ResultList
 import ai.vital.vitalsigns.model.VitalApp;
 
 
-class YouTubeCommentsScript implements VitalPrimeGroovyScriptV2 {
+class YouTubeCommentsScript implements VitalPrimeGroovyScript {
 
 	private static DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
 	static {
@@ -30,7 +30,7 @@ class YouTubeCommentsScript implements VitalPrimeGroovyScriptV2 {
 	
 	@Override
 	public ResultList executeScript(
-			VitalPrimeScriptInterfaceV2 scriptInterface,
+			VitalPrimeScriptInterface scriptInterface,
 			Map<String, Object> parameters) {
 			
 		ResultList rl = new ResultList()
