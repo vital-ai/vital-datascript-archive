@@ -14,7 +14,8 @@ import com.braintreegateway.PaymentMethodRequest;
 import com.braintreegateway.Plan as BTPlan
 import com.braintreegateway.ResourceCollection;
 import com.braintreegateway.Result
-import com.braintreegateway.Subscription;
+import com.braintreegateway.Subscription
+import com.braintreegateway.SubscriptionRequest;
 import com.braintreegateway.SubscriptionSearchRequest;
 import com.braintreegateway.Transaction
 import com.braintreegateway.TransactionAddressRequest
@@ -27,6 +28,7 @@ import com.vitalai.domain.commerce.Invoice
 import com.vitalai.domain.commerce.PaymentInfo;
 import com.vitalai.domain.commerce.PaymentMethod
 import com.vitalai.domain.commerce.Plan
+import com.vitalai.domain.commerce.ServiceContract;
 import com.vitalai.domain.commerce.ShippingInfo;
 
 import ai.vital.domain.Login;
@@ -145,7 +147,27 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 				if(!token)  throw new Exception("No 'token' param")
 				
 				removePaymentMethod(gateway, customer, token, rl)
+				
+			} else if(action == 'getSubscriptions') {
 			
+				Customer customer = params.get('customer')
+				if(customer == null) throw new Exception("No customer param")
+				
+				getSubscriptions(gateway, customer, rl)
+			
+			} else if(action == 'subscribe') {
+			
+				Customer customer = params.get('customer')
+				if(customer == null) throw new Exception("No customer param")
+				
+				PaymentMethod paymentMethod = params.get('paymentMethod')
+				if(paymentMethod == null) throw new Exception("No paymentMethod param")
+			
+				Plan plan = params.get('plan')
+				if(plan == null) throw new Exception("No plan param")
+				
+				subscribe(gateway, customer, paymentMethod, plan, rl)
+				
 			} else {
 			
 				throw new RuntimeException("Unknown action: ${action}")
@@ -160,6 +182,137 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		}
 		
 		return rl;
+		
+	}
+	
+	void getSubscriptions(BraintreeGateway gateway, Customer customer, ResultList rl) {
+		
+		BTCustomer btCustomer = gateway.customer().find(customer.braintreeCustomerID.toString())
+		if(btCustomer == null) throw new Exception("Customer not found in braintree")
+	
+		
+		List<? extends BTPaymentMethod> methods = btCustomer.getPaymentMethods()
+		
+		
+		for(BTPaymentMethod btpm : methods) {
+			
+			if(btpm instanceof BTCreditCard) {
+				
+				BTCreditCard btCC = btpm
+			
+				for( Subscription sub : btCC.getSubscriptions() ) {
+
+					rl.results.add(new ResultElement(btSubscriptionToServiceContract(sub), 1D))
+										
+				}
+				
+			}
+			
+		}
+			
+	}
+	
+	void subscribe(BraintreeGateway gateway, Customer customer, PaymentMethod paymentMethod, Plan plan, ResultList rl) {
+	
+		BTCustomer btCustomer = gateway.customer().find(customer.braintreeCustomerID.toString())
+		if(btCustomer == null) throw new Exception("Customer not found in braintree")
+		
+		/*
+		BTPlan btPlan = null
+		for(BTPlan x : gateway.plan().all()) {
+			if(x.getId().equals(plan.braintreePlanID.toString())) {
+				btPlan = x
+			}
+		}
+		
+		if(btPlan == null) throw new Exception("Plan not found: " + plan.braintreePlanID.toString())
+		*/
+		
+		
+		List<? extends BTPaymentMethod> methods = btCustomer.getPaymentMethods()
+		
+		rl.totalResults = methods.size()
+		
+		BTPaymentMethod currentPM = null
+		
+		for(BTPaymentMethod btpm : methods) {
+			
+			if(btpm instanceof BTCreditCard) {
+				
+				BTCreditCard btCC = btpm
+			
+				if(btCC.getToken().equals(paymentMethod.token.toString())) {
+					currentPM = btCC
+				}
+					
+				for( Subscription sub : btCC.getSubscriptions() ) {
+					
+					Subscription.Status status = sub.getStatus()
+					
+					if( status == Subscription.Status.ACTIVE || status == Subscription.Status.PAST_DUE 
+						|| status == Subscription.Status.PENDING) {
+						
+						throw new Exception("Existing active subsription found ID: " + sub.getId() + "  status: " + status.name() + " plan: " + sub.getPlanId())
+						
+					}
+				}
+				
+			}
+			
+		}
+		
+		if(currentPM == null) throw new Exception("Payment method not found in Braintree");
+		
+		SubscriptionRequest sr = new SubscriptionRequest()
+		sr.paymentMethodToken(paymentMethod.token.toString())
+		sr.planId(plan.braintreePlanID.toString())
+//		
+		
+		Result<Subscription> res = gateway.subscription().create(sr)
+		
+		if(!res.isSuccess()) throw new Exception("Subscription error: " + res.getMessage())
+		
+		Subscription subscription = res.getTarget()
+		
+		ServiceContract contract = btSubscriptionToServiceContract(subscription)		
+		
+		rl.results.add(new ResultElement(contract, 1D))
+		
+		//DONE
+			
+	}
+	
+	private ServiceContract btSubscriptionToServiceContract(Subscription subscription) {
+		
+		ServiceContract contract = new ServiceContract()
+		contract.generateURI((VitalApp)null)
+		
+		contract.balance = subscription.getBalance()?.floatValue()
+		contract.billingDayOfMonth = subscription.getBillingDayOfMonth()
+		contract.billingPeriodEndDate = subscription.getBillingPeriodEndDate()?.getTime()
+		contract.billingPeriodStartDate = subscription.getBillingPeriodStartDate()?.getTime()
+		contract.braintreePlanID = subscription.getPlanId()
+		contract.braintreeSubscriptionID = subscription.getId()
+		contract.createdAt = subscription.getCreatedAt()?.getTime()
+		contract.currentBillingCycle = subscription.getCurrentBillingCycle()
+		contract.daysPastDue = subscription.getDaysPastDue()
+		contract.failureCount = subscription.getFailureCount()
+		contract.firstBillingDate = subscription.getFirstBillingDate()?.getTime()
+		contract.nextBillingDate = subscription.getNextBillingDate()?.getTime()
+		contract.numberOfBillingCycles = subscription.getNumberOfBillingCycles()
+		contract.paidThroughDate = subscription.getPaidThroughDate()?.getTime()
+		contract.paymentMethodToken = subscription.getPaymentMethodToken()
+		contract.price = subscription.getPrice()?.floatValue()
+		contract.subscriptionStatus = subscription.getStatus().name()
+//		contract.subscriptionStatusHistory = subscription.getStatusHistory()
+		contract.trialDuration = subscription.getTrialDuration()
+		contract.trialDurationUnit = subscription.getTrialDurationUnit()?.name()
+		contract.trialPeriod = subscription.hasTrialPeriod()
+		contract.updatedAt = subscription.getUpdatedAt()?.getTime()
+		contract.neverExpires = subscription.neverExpires()
+		
+		return contract
+		
 	}
 	
 	void addPaymentMethod(BraintreeGateway gateway, Customer customer, String payment_method_nonce, ResultList rl) {
@@ -261,6 +414,8 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 			pm.expirationDate = btpm.getExpirationMonth() + "/" + btpm.getExpirationYear()
 			pm.maskedNumber = btpm.getMaskedNumber()
 			pm.name = btpm.cardType
+			
+			pm.imageURL = btpm.getImageUrl()
 			
 		} else {
 		
