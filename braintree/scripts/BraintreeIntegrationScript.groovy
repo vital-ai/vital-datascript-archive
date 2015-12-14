@@ -168,6 +168,17 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 				
 				subscribe(gateway, customer, paymentMethod, plan, rl)
 				
+			} else if(action == 'cancelSubscription') {
+			
+				Customer customer = params.get('customer')
+				if(customer == null) throw new Exception("No customer param")
+				
+				ServiceContract serviceContract = params.get('serviceContract')
+				if(serviceContract == null) throw new Exception("No serviceContract param")
+				
+				cancelSubscription(gateway, customer, serviceContract, rl)
+				
+			
 			} else {
 			
 				throw new RuntimeException("Unknown action: ${action}")
@@ -185,6 +196,51 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		
 	}
 	
+	void cancelSubscription(BraintreeGateway gateway, Customer customer, ServiceContract serviceContract, ResultList rl) {
+		
+		BTCustomer btCustomer = gateway.customer().find(customer.braintreeCustomerID.toString())
+		if(btCustomer == null) throw new Exception("Customer not found in braintree")
+		
+		List<? extends BTPaymentMethod> methods = btCustomer.getPaymentMethods()
+		
+		BTPaymentMethod currentPM = null
+		
+		Subscription subscription = null
+		
+		for(BTPaymentMethod btpm : methods) {
+			
+			if(btpm instanceof BTCreditCard) {
+				
+				BTCreditCard btCC = btpm
+			
+				for( Subscription sub : btCC.getSubscriptions() ) {
+
+					if(sub.getId().equals(serviceContract.braintreeSubscriptionID.toString())) {
+						
+						subscription = sub
+						
+						break
+						
+					}
+					
+				}
+				
+			}
+			
+		}
+		
+		if(subscription == null) throw new Exception("Subscription not found: ${serviceContract.braintreeSubscriptionID.toString()}")
+		
+		Result res = gateway.subscription().cancel(serviceContract.braintreeSubscriptionID.toString())
+		
+		if(res.isSuccess()) {
+			rl.status = VitalStatus.withOKMessage("Subscription cancelled")
+		} else {
+			rl.status = VitalStatus.withError(res.getMessage())
+		}
+		
+	}
+	
 	void getSubscriptions(BraintreeGateway gateway, Customer customer, ResultList rl) {
 		
 		BTCustomer btCustomer = gateway.customer().find(customer.braintreeCustomerID.toString())
@@ -193,6 +249,8 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		
 		List<? extends BTPaymentMethod> methods = btCustomer.getPaymentMethods()
 		
+		rl.totalResults = methods.size()
+		 
 		
 		for(BTPaymentMethod btpm : methods) {
 			
@@ -276,6 +334,7 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		
 		ServiceContract contract = btSubscriptionToServiceContract(subscription)		
 		
+		rl.status = VitalStatus.withOKMessage("Subscription success")
 		rl.results.add(new ResultElement(contract, 1D))
 		
 		//DONE
