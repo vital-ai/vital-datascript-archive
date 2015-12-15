@@ -177,7 +177,19 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 				if(serviceContract == null) throw new Exception("No serviceContract param")
 				
 				cancelSubscription(gateway, customer, serviceContract, rl)
+			
+			} else if(action == 'updateSubscriptionPaymentMethod') {	
+			
+				Customer customer = params.get('customer')
+				if(customer == null) throw new Exception("No customer param")
 				
+				ServiceContract serviceContract = params.get('serviceContract')
+				if(serviceContract == null) throw new Exception("No serviceContract param")
+				
+				PaymentMethod paymentMethod = params.get('paymentMethod')
+				if(paymentMethod == null) throw new Exception("No paymentMethod param")
+				
+				updateSubscriptionPaymentMethod(gateway, customer, serviceContract, paymentMethod, rl)
 			
 			} else {
 			
@@ -193,6 +205,93 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		}
 		
 		return rl;
+		
+	}
+	
+	void updateSubscriptionPaymentMethod(BraintreeGateway gateway, Customer customer, ServiceContract serviceContract, PaymentMethod paymentMethod, ResultList rl) {
+		
+		BTCustomer btCustomer = gateway.customer().find(customer.braintreeCustomerID.toString())
+		if(btCustomer == null) throw new Exception("Customer not found in braintree")
+		
+		List<? extends BTPaymentMethod> methods = btCustomer.getPaymentMethods()
+		
+		BTPaymentMethod currentPM = null
+		
+		Subscription subscription = null
+		
+		BTPaymentMethod newMethod = null
+		
+		BTPaymentMethod currentMethod = null
+		
+		for(BTPaymentMethod btpm : methods) {
+			
+			if(btpm instanceof BTCreditCard) {
+	
+				if(btpm.getToken().equals(paymentMethod.token.toString())) {
+					newMethod = btpm
+				}
+							
+				BTCreditCard btCC = btpm
+			
+				for( Subscription sub : btCC.getSubscriptions() ) {
+
+					if(sub.getId().equals(serviceContract.braintreeSubscriptionID.toString())) {
+						
+						currentMethod = btpm
+						
+						subscription = sub
+						
+						break
+						
+					}
+					
+				}
+				
+			}
+			
+		}
+		
+		if(subscription == null) throw new Exception("Braintree subscription not found: ${serviceContract.braintreeSubscriptionID?.toString()}");
+		
+		if(newMethod == null) throw new Exception("New payment method not found in Braintree, token ${paymentMethod.token}")
+		
+		if(currentMethod != null && newMethod.getToken().equals(currentMethod.getToken()) ) {
+			throw new Exception("Cannot update subscritpion with same payment method")
+		}
+		
+		SubscriptionRequest request = new SubscriptionRequest()
+			.paymentMethodToken(paymentMethod.token.toString())
+		//price remains
+		//.price(new BigDecimal("14.00"))
+		//plan remains
+		//.planId("new_plan")
+
+		Result<Subscription> updateResponse = gateway.subscription().update(subscription.getId(), request)
+		
+		if(updateResponse.isSuccess()) {
+			
+			rl.status = VitalStatus.withOKMessage("Subscription updated")
+			
+			Subscription updated = updateResponse.getTarget()
+			
+			if(updated != null) {
+				
+				ServiceContract updatedContract = btSubscriptionToServiceContract(updated)
+				
+				updatedContract.URI = serviceContract.URI
+				
+				rl.results.add(new ResultElement(updatedContract, 1D))
+				
+			}
+			
+		} else {
+		
+			rl.status = VitalStatus.withError(updateResponse.getMessage())
+			
+		
+		}
+		
+		
 		
 	}
 	
@@ -231,13 +330,29 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		
 		if(subscription == null) throw new Exception("Subscription not found: ${serviceContract.braintreeSubscriptionID.toString()}")
 		
-		Result res = gateway.subscription().cancel(serviceContract.braintreeSubscriptionID.toString())
+		Result<Subscription> res = gateway.subscription().cancel(serviceContract.braintreeSubscriptionID.toString())
 		
 		if(res.isSuccess()) {
+			
 			rl.status = VitalStatus.withOKMessage("Subscription cancelled")
+			
+			Subscription updated = res.getTarget()
+			
+			if(updated != null) {
+				
+				ServiceContract updatedContract = btSubscriptionToServiceContract(updated)
+				
+				updatedContract.URI = serviceContract.URI
+				
+				rl.results.add(new ResultElement(updatedContract, 1D))
+				
+			}
+			
 		} else {
 			rl.status = VitalStatus.withError(res.getMessage())
 		}
+		
+		
 		
 	}
 	
