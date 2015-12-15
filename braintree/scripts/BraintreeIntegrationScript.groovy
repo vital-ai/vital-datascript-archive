@@ -190,7 +190,17 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 				if(paymentMethod == null) throw new Exception("No paymentMethod param")
 				
 				updateSubscriptionPaymentMethod(gateway, customer, serviceContract, paymentMethod, rl)
+
+			} else if(action == 'getSubscriptionTransactions') {
 			
+				Customer customer = params.get('customer')
+				if(customer == null) throw new Exception("No customer param")
+				
+				ServiceContract serviceContract = params.get('serviceContract')
+				if(serviceContract == null) throw new Exception("No serviceContract param")
+				
+				getSubscriptionTransactions(gateway, customer, serviceContract, rl)
+					
 			} else {
 			
 				throw new RuntimeException("Unknown action: ${action}")
@@ -206,6 +216,60 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		
 		return rl;
 		
+	}
+	
+	void getSubscriptionTransactions(BraintreeGateway gateway, Customer customer, ServiceContract serviceContract, ResultList rl) {
+		
+		BTCustomer btCustomer = gateway.customer().find(customer.braintreeCustomerID.toString())
+		if(btCustomer == null) throw new Exception("Customer not found in braintree")
+		
+		List<? extends BTPaymentMethod> methods = btCustomer.getPaymentMethods()
+		
+		BTPaymentMethod currentPM = null
+		
+		Subscription subscription = null
+		
+		BTPaymentMethod newMethod = null
+		
+		BTPaymentMethod currentMethod = null
+		
+		for(BTPaymentMethod btpm : methods) {
+			
+			if(btpm instanceof BTCreditCard) {
+	
+				BTCreditCard btCC = btpm
+			
+				for( Subscription sub : btCC.getSubscriptions() ) {
+
+					if(sub.getId().equals(serviceContract.braintreeSubscriptionID.toString())) {
+						
+						currentMethod = btpm
+						
+						subscription = sub
+						
+						break
+						
+					}
+					
+				}
+				
+			}
+			
+		}
+		
+		if(subscription == null) throw new Exception("Braintree subscription not found: ${serviceContract.braintreeSubscriptionID?.toString()}");
+	
+		//most recent first
+		List<Transaction> txs = subscription.getTransactions();
+		
+		for(Transaction tx : txs) {
+			
+			PaymentInfo paymentInfo = btTransactionToPaymentInfo(tx);
+			
+			rl.results.add(new ResultElement(paymentInfo, 1D))
+			
+		}
+			
 	}
 	
 	void updateSubscriptionPaymentMethod(BraintreeGateway gateway, Customer customer, ServiceContract serviceContract, PaymentMethod paymentMethod, ResultList rl) {
@@ -573,6 +637,26 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 			rl.status = VitalStatus.withOKMessage("Payment method removed successfully")
 			
 		}
+		
+	}
+	
+	private PaymentInfo btTransactionToPaymentInfo(Transaction tx) {
+		
+		PaymentInfo pi = new PaymentInfo()
+		pi.generateURI((VitalApp)null)
+		
+		pi.amount = tx.getAmount()?.floatValue()
+		pi.billingPeriodEndDate = tx.getSubscription()?.getBillingPeriodEndDate()?.getTime()
+		pi.billingPeriodStartDate = tx.getSubscription()?.getBillingPeriodStartDate()?.getTime()
+		pi.braintreeSubscriptionID = tx.getSubscriptionId()
+		pi.braintreeTransactionID = tx.getId()
+		pi.createdAt = tx.getCreatedAt()?.getTime()
+		pi.currencyIsoCode = tx.getCurrencyIsoCode()
+		pi.paymentMethod = tx.getCreditCard() ? tx.getCreditCard().getToken() : null
+		pi.paymentStatus = tx.getStatus().name()
+		pi.updatedAt = tx.getUpdatedAt().getTime()
+		
+		return pi
 		
 	}
 	
