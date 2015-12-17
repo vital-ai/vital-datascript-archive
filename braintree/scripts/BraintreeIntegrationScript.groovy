@@ -166,7 +166,9 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 				Plan plan = params.get('plan')
 				if(plan == null) throw new Exception("No plan param")
 				
-				subscribe(gateway, customer, paymentMethod, plan, rl)
+				Integer newTrialPeriod = params.get('newTrialPeriod')
+				
+				subscribe(gateway, customer, paymentMethod, plan, newTrialPeriod, rl)
 				
 			} else if(action == 'cancelSubscription') {
 			
@@ -200,7 +202,14 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 				if(serviceContract == null) throw new Exception("No serviceContract param")
 				
 				getSubscriptionTransactions(gateway, customer, serviceContract, rl)
-					
+				
+//			} else if(action == 'synchronizeAccount') {
+//			
+//				Customer customer = params.get('customer')
+//				if(customer == null) throw new Exception("No customer param")
+//					
+//				synchronizeAccount(gateway, customer, rl)
+				
 			} else {
 			
 				throw new RuntimeException("Unknown action: ${action}")
@@ -217,6 +226,8 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		return rl;
 		
 	}
+	
+
 	
 	void getSubscriptionTransactions(BraintreeGateway gateway, Customer customer, ServiceContract serviceContract, ResultList rl) {
 		
@@ -449,7 +460,7 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 			
 	}
 	
-	void subscribe(BraintreeGateway gateway, Customer customer, PaymentMethod paymentMethod, Plan plan, ResultList rl) {
+	void subscribe(BraintreeGateway gateway, Customer customer, PaymentMethod paymentMethod, Plan plan, Integer newTrialPeriod, ResultList rl) {
 	
 		BTCustomer btCustomer = gateway.customer().find(customer.braintreeCustomerID.toString())
 		if(btCustomer == null) throw new Exception("Customer not found in braintree")
@@ -503,7 +514,28 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		SubscriptionRequest sr = new SubscriptionRequest()
 		sr.paymentMethodToken(paymentMethod.token.toString())
 		sr.planId(plan.braintreePlanID.toString())
-//		
+		
+		if(newTrialPeriod == null) {
+			
+			//new subscription, full trial
+			
+		} else {
+		
+			if(newTrialPeriod.intValue() == 0) {
+				
+				//switching plan without trial 
+				sr.trialPeriod(false)
+				sr.trialDuration(0)
+				
+			} else {
+			
+				sr.trialPeriod(true)
+				sr.trialDuration(newTrialPeriod)
+			
+			}
+		
+		}
+		
 		
 		Result<Subscription> res = gateway.subscription().create(sr)
 		
@@ -511,16 +543,36 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		
 		Subscription subscription = res.getTarget()
 		
-		ServiceContract contract = btSubscriptionToServiceContract(subscription)		
+		ServiceContract contract = btSubscriptionToServiceContract(subscription)
+		
+		List<Transaction> txs = subscription.getTransactions()
+		
+		PaymentInfo firstPayment = null
+				
+		if(txs.size() > 0) {
+		
+			firstPayment = btTransactionToPaymentInfo(txs.get(0))
+				
+		}
+		
+//		Transaction tx = res.getTransaction();
+//		if(tx != null) {
+//			firstPayment = btTransactionToPaymentInfo(tx)
+//		}
+		
+		
 		
 		rl.status = VitalStatus.withOKMessage("Subscription success")
 		rl.results.add(new ResultElement(contract, 1D))
+		if(firstPayment != null) {
+			rl.results.add(new ResultElement(firstPayment, 1D))
+		}
 		
 		//DONE
 			
 	}
 	
-	private ServiceContract btSubscriptionToServiceContract(Subscription subscription) {
+	static ServiceContract btSubscriptionToServiceContract(Subscription subscription) {
 		
 		ServiceContract contract = new ServiceContract()
 		contract.generateURI((VitalApp)null)
@@ -640,7 +692,7 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		
 	}
 	
-	private PaymentInfo btTransactionToPaymentInfo(Transaction tx) {
+	static PaymentInfo btTransactionToPaymentInfo(Transaction tx) {
 		
 		PaymentInfo pi = new PaymentInfo()
 		pi.generateURI((VitalApp)null)
@@ -660,7 +712,7 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 		
 	}
 	
-	private PaymentMethod btPaymentMethodToPaymentMethod(BTPaymentMethod btpm) {
+	static PaymentMethod btPaymentMethodToPaymentMethod(BTPaymentMethod btpm) {
 		
 		PaymentMethod pm = null
 		
@@ -863,7 +915,7 @@ class BraintreeIntegrationScript implements VitalPrimeGroovyScript {
 	}
 	
 	
-	BraintreeGateway initGateway(Map<String, Object> braintreeCfg) {
+	static BraintreeGateway initGateway(Map<String, Object> braintreeCfg) {
 		
 		String btEnvironment = braintreeCfg.get('environment')
 		if(!btEnvironment) throw new RuntimeException("No braintree.environment param")
