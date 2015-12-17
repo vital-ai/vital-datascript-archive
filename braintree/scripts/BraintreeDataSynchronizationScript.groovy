@@ -3,15 +3,15 @@ package commons.scripts
 import java.util.Map
 import java.util.Map.Entry
 
-import org.joda.time.PeriodType;
-
 import com.braintreegateway.BraintreeGateway;
 import com.braintreegateway.CreditCard as BTCreditCard
 import com.braintreegateway.Customer as BTCustomer;
+import com.braintreegateway.Environment
 import com.braintreegateway.PaymentMethod as BTPaymentMethod;
 import com.braintreegateway.Subscription
 import com.braintreegateway.Transaction
 import com.braintreegateway.exceptions.NotFoundException;
+import com.vitalai.domain.commerce.CreditCard
 import com.vitalai.domain.commerce.Customer
 import com.vitalai.domain.commerce.Edge_hasInvoice
 import com.vitalai.domain.commerce.Edge_hasItem
@@ -26,7 +26,6 @@ import com.vitalai.domain.commerce.InvoiceItem
 import com.vitalai.domain.commerce.PaymentInfo;
 import com.vitalai.domain.commerce.PaymentMethod;
 import com.vitalai.domain.commerce.Plan
-import com.vitalai.domain.commerce.Plan_PropertiesHelper;
 import com.vitalai.domain.commerce.ServiceContract;
 
 import ai.vital.prime.groovy.VitalPrimeGroovyScript
@@ -112,7 +111,7 @@ class BraintreeDataSynchronizationScript implements VitalPrimeGroovyScript {
 			
 			this.customer = customer
 			
-			this.gateway = BraintreeIntegrationScript.initGateway(braintreeCfg)
+			this.gateway = initGateway(braintreeCfg)
 			
 			List<VitalSegment> segments = scriptInterface.listSegments()
 			
@@ -455,7 +454,7 @@ class BraintreeDataSynchronizationScript implements VitalPrimeGroovyScript {
 					
 					node_constraint { Plan.class }
 					
-					node_constraint { ((Plan_PropertiesHelper)Plan.props()).braintreePlanID.equalTo(btSubscription.getPlanId() ) }
+					node_constraint { Plan.props().braintreePlanID.equalTo(btSubscription.getPlanId() ) }
 					
 				}
 			}.toQuery()
@@ -475,7 +474,7 @@ class BraintreeDataSynchronizationScript implements VitalPrimeGroovyScript {
 			}			
 			
 			
-			sc = BraintreeIntegrationScript.btSubscriptionToServiceContract(btSubscription)
+			sc = btSubscriptionToServiceContract(btSubscription)
 			Edge_hasPlan planEdge = new Edge_hasPlan().addSource(sc).addDestination(plan).generateURI(app)
 			Edge_hasSubscription subsEdge = new Edge_hasSubscription().addSource(customer).addDestination(sc).generateURI(app)
 			
@@ -572,7 +571,7 @@ class BraintreeDataSynchronizationScript implements VitalPrimeGroovyScript {
 				container.putGraphObject(g)
 			}
 			
-			ServiceContract updatedContract = BraintreeIntegrationScript.btSubscriptionToServiceContract(btSubscription)
+			ServiceContract updatedContract = btSubscriptionToServiceContract(btSubscription)
 			updatedContract.URI = sc.URI
 			
 			if(!updatedContract.equals(sc)) {
@@ -740,7 +739,7 @@ class BraintreeDataSynchronizationScript implements VitalPrimeGroovyScript {
 
 				if(vt == null) {
 					
-					vt = BraintreeIntegrationScript.btTransactionToPaymentInfo(tx)
+					vt = btTransactionToPaymentInfo(tx)
 
 					String token = vt.paymentMethod.toString()
 					
@@ -760,7 +759,7 @@ class BraintreeDataSynchronizationScript implements VitalPrimeGroovyScript {
 					
 				} else {
 				
-					PaymentInfo updated = BraintreeIntegrationScript.btTransactionToPaymentInfo(tx)
+					PaymentInfo updated = btTransactionToPaymentInfo(tx)
 					updated.URI = vt.URI
 					
 					coveredTransactions.add(vt.URI)
@@ -900,5 +899,127 @@ class BraintreeDataSynchronizationScript implements VitalPrimeGroovyScript {
 		}
 			
 		return r;
+	}
+	
+	
+	static BraintreeGateway initGateway(Map<String, Object> braintreeCfg) {
+		
+		String btEnvironment = braintreeCfg.get('environment')
+		if(!btEnvironment) throw new RuntimeException("No braintree.environment param")
+		
+		String btMerchantID = braintreeCfg.get('merchantID')
+		if(!btMerchantID) throw new RuntimeException("No braintree.merchantID param")
+		
+		String btPublicKey = braintreeCfg.get('publicKey')
+		if(!btPublicKey) throw new RuntimeException("No braintree.publicKey param")
+		
+		String btPrivateKey = braintreeCfg.get('privateKey')
+		if(!btPrivateKey) throw new RuntimeException("No braintree.privateKey param")
+		
+		Environment env = null
+		if("DEVELOPMENT".equalsIgnoreCase(btEnvironment)) {
+			env = Environment.DEVELOPMENT
+		} else if("SANDBOX".equalsIgnoreCase(btEnvironment)) {
+			env = Environment.SANDBOX
+		} else if("PRODUCTION".equalsIgnoreCase(btEnvironment)) {
+			env = Environment.PRODUCTION
+		} else {
+			throw new RuntimeException("Unknown Braintree environment: ${btEnvironment}")
+		}
+		 
+		BraintreeGateway braintreeGateway = new BraintreeGateway(
+			env,
+			btMerchantID,
+			btPublicKey,
+			btPrivateKey
+		);
+	
+		return braintreeGateway
+		
+	}
+	
+	static PaymentMethod btPaymentMethodToPaymentMethod(BTPaymentMethod btpm) {
+		
+		PaymentMethod pm = null
+		
+		if(btpm instanceof BTCreditCard) {
+			
+			pm = new CreditCard()
+			
+			pm.cardType = btpm.cardType
+			pm.expirationDate = btpm.getExpirationMonth() + "/" + btpm.getExpirationYear()
+			pm.maskedNumber = btpm.getMaskedNumber()
+			pm.name = btpm.cardType
+			
+			pm.imageURL = btpm.getImageUrl()
+			
+		} else {
+		
+			//other methods stored
+			pm = new PaymentMethod()
+			
+			pm.name = btpm.getClass().simpleName
+		
+		}
+		
+		pm.token = btpm.getToken()
+		
+		pm.generateURI((VitalApp) null)
+		
+		return pm
+		
+	}
+	
+	static ServiceContract btSubscriptionToServiceContract(Subscription subscription) {
+		
+		ServiceContract contract = new ServiceContract()
+		contract.generateURI((VitalApp)null)
+		
+		contract.balance = subscription.getBalance()?.floatValue()
+		contract.billingDayOfMonth = subscription.getBillingDayOfMonth()
+		contract.billingPeriodEndDate = subscription.getBillingPeriodEndDate()?.getTime()
+		contract.billingPeriodStartDate = subscription.getBillingPeriodStartDate()?.getTime()
+		contract.braintreePlanID = subscription.getPlanId()
+		contract.braintreeSubscriptionID = subscription.getId()
+		contract.createdAt = subscription.getCreatedAt()?.getTime()
+		contract.currentBillingCycle = subscription.getCurrentBillingCycle()
+		contract.daysPastDue = subscription.getDaysPastDue()
+		contract.failureCount = subscription.getFailureCount()
+		contract.firstBillingDate = subscription.getFirstBillingDate()?.getTime()
+		contract.nextBillingDate = subscription.getNextBillingDate()?.getTime()
+		contract.numberOfBillingCycles = subscription.getNumberOfBillingCycles()
+		contract.paidThroughDate = subscription.getPaidThroughDate()?.getTime()
+		contract.paymentMethodToken = subscription.getPaymentMethodToken()
+		contract.price = subscription.getPrice()?.floatValue()
+		contract.subscriptionStatus = subscription.getStatus().name()
+//		contract.subscriptionStatusHistory = subscription.getStatusHistory()
+		contract.trialDuration = subscription.getTrialDuration()
+		contract.trialDurationUnit = subscription.getTrialDurationUnit()?.name()
+		contract.trialPeriod = subscription.hasTrialPeriod()
+		contract.updatedAt = subscription.getUpdatedAt()?.getTime()
+		contract.neverExpires = subscription.neverExpires()
+		
+		return contract
+		
+	}
+	
+	static PaymentInfo btTransactionToPaymentInfo(Transaction tx) {
+		
+		PaymentInfo pi = new PaymentInfo()
+		pi.generateURI((VitalApp)null)
+		
+		pi.amount = tx.getAmount()?.floatValue()
+		pi.billingPeriodEndDate = tx.getSubscription()?.getBillingPeriodEndDate()?.getTime()
+		pi.billingPeriodStartDate = tx.getSubscription()?.getBillingPeriodStartDate()?.getTime()
+		pi.braintreeSubscriptionID = tx.getSubscriptionId()
+		pi.braintreeTransactionID = tx.getId()
+		pi.createdAt = tx.getCreatedAt()?.getTime()
+		pi.currencyIsoCode = tx.getCurrencyIsoCode()
+		pi.paymentMethod = tx.getCreditCard() ? tx.getCreditCard().getToken() : null
+		pi.paymentStatus = tx.getStatus().name()
+		pi.updatedAt = tx.getUpdatedAt().getTime()
+		
+		return pi
+		
 	}
 }
