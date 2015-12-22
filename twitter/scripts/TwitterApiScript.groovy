@@ -127,6 +127,34 @@ class TwitterApiScript implements VitalPrimeGroovyScript {
 				
 				rl.results.add(new ResultElement(gco, 1D))
 				
+			} else if('getCurrentAccount'.equals(action)) {
+			
+				Twitter twitter = new TwitterFactory().getInstance()
+				twitter.setOAuthConsumer(apiKey, apiSecret)
+				
+				String oAuthToken = params.get('oAuthToken')
+				if(!oAuthToken) throw new Exception("No oAuthToken param")
+				
+				String oAuthTokenSecret = params.get('oAuthTokenSecret')
+				if(!oAuthTokenSecret) throw new Exception("No oAuthTokenSecret param")
+				
+				AccessToken accessToken = new AccessToken(oAuthToken, oAuthTokenSecret)
+				twitter.setOAuthAccessToken(accessToken)
+				
+				User user = twitter.users().verifyCredentials();
+				
+				TwitterAccount tw = new TwitterAccount()
+				tw.generateURI(scriptInterface.getApp())
+				tw.oAuthToken = accessToken.getToken()
+				tw.oAuthTokenSecret = accessToken.getTokenSecret()
+				tw.pictureURL = user.getProfileImageURLHttps()
+				tw.description = user.getDescription()
+				tw.screenName = user.getScreenName()
+				tw.name = user.getName()
+				tw.twitterID = user.getId()
+				
+				rl.results.add(new ResultElement(tw, 1D))
+				
 			} else {
 			
 				throw new Exception("Unknown action: ${action}")

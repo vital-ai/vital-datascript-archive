@@ -11,6 +11,7 @@ import ai.vital.vitalservice.VitalStatus
 import ai.vital.vitalservice.query.ResultElement;
 import ai.vital.vitalservice.query.ResultList
 import ai.vital.vitalsigns.model.VITAL_GraphContainerObject;
+import ai.vital.vitalsigns.model.VitalApp
 
 import com.restfb.DefaultFacebookClient
 import com.restfb.FacebookClient.AccessToken
@@ -18,6 +19,7 @@ import com.restfb.FacebookClient.DebugTokenError;
 import com.restfb.FacebookClient.DebugTokenInfo;
 import com.restfb.Parameter;
 import com.restfb.types.Page
+import com.vitalai.domain.social.FacebookAccount;
 import com.restfb.Version;
 
 class FacebookApiScript implements VitalPrimeGroovyScript {
@@ -99,6 +101,25 @@ class FacebookApiScript implements VitalPrimeGroovyScript {
 				}
 				
 				rl.results.add(new ResultElement(gco, 1D))
+				
+			} else if('getCurrentAccount'.equals(action)) {
+			
+				String accessToken = params.get('accessToken')
+				if(!accessToken) throw new Exception("No 'accessToken' param")
+				
+				DefaultFacebookClient fbClient = new DefaultFacebookClient(accessToken)
+				
+				Page page = fbClient.fetchObject("me", Page.class, Parameter.with("fields", "name,id,category"));
+
+				FacebookAccount fbAcc = new FacebookAccount()
+				fbAcc.generateURI(scriptInterface != null ? scriptInterface.getApp() : (VitalApp)null)
+				fbAcc.facebookID = page.getId()
+				fbAcc.pictureURL = 'https://graph.facebook.com/' + page.getId() + '/picture?type=square'
+				fbAcc.name = page.getName()
+				fbAcc.category = page.getCategory()
+				fbAcc.accessToken = accessToken
+				
+				rl.results.add(new ResultElement(fbAcc, 1D))
 				
 			} else {
 				throw new Exception("Unknown action: ${action}")
