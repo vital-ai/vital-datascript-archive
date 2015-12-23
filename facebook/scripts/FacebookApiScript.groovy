@@ -20,8 +20,11 @@ import com.restfb.FacebookClient.DebugTokenError;
 import com.restfb.FacebookClient.DebugTokenInfo;
 import com.restfb.Parameter;
 import com.restfb.types.Page
-import com.vitalai.domain.social.FacebookAccount;
+import com.vitalai.domain.social.Edge_hasFanCountry;
+import com.vitalai.domain.social.FacebookAccount
+import com.vitalai.domain.social.FanCountry;
 import com.restfb.Version
+import com.restfb.json.JsonArray;
 import com.restfb.json.JsonObject;;
 
 class FacebookApiScript implements VitalPrimeGroovyScript {
@@ -87,7 +90,7 @@ class FacebookApiScript implements VitalPrimeGroovyScript {
 				DebugTokenInfo info = fbClient.debugToken(accessToken)
 				
 				VITAL_GraphContainerObject gco = new VITAL_GraphContainerObject()
-				gco.generateURI(scriptInterface.getApp())
+				gco.generateURI(scriptInterface != null ? scriptInterface.getApp() : (VitalApp) null)
 				gco.setProperty("valid", info.isValid())
 				gco.setProperty("expiresAt", info.getExpiresAt())
 				if(!info.isValid()) {
@@ -109,12 +112,19 @@ class FacebookApiScript implements VitalPrimeGroovyScript {
 				String accessToken = params.get('accessToken')
 				if(!accessToken) throw new Exception("No 'accessToken' param")
 				
+				Boolean includeAnalytics = params.get('includeAnalytics')
+				if(includeAnalytics == null) includeAnalytics = false
+				
 				DefaultFacebookClient fbClient = new DefaultFacebookClient(accessToken)
 				
 				Page page = fbClient.fetchObject("me", Page.class, Parameter.with("fields", "name,id,category,username,likes"));
 
 				FacebookAccount fbAcc = new FacebookAccount()
-				fbAcc.generateURI(scriptInterface != null ? scriptInterface.getApp() : (VitalApp)null)
+				if(scriptInterface != null) {
+					fbAcc.generateURI(scriptInterface.getApp())
+				} else {
+					fbAcc.generateURI((VitalApp)null)
+				}
 				fbAcc.accessToken = accessToken
 				fbAcc.category = page.getCategory()
 				fbAcc.facebookID = page.getId()
@@ -124,14 +134,53 @@ class FacebookApiScript implements VitalPrimeGroovyScript {
 				fbAcc.username = page.getUsername()
 				fbAcc.tokenValid = true
 				
+				rl.results.add(new ResultElement(fbAcc, 1D))
+				
 				//get analytics
-				Connection<JsonObject> insights = fbClient.fetchConnection("me/insights/page_fans_country", JsonObject.class, Parameter.with("period", "lifetime"))
-				List<JsonObject> l = insights.getData();
-				if(l.size() > 0) {
-					fbAcc.pageFansCountry = l.get(0).toString()
+//				Connection<JsonObject> insights = fbClient.fetchConnection("me/insights/page_fans_country", JsonObject.class, Parameter.with("period", "lifetime"))
+//				List<JsonObject> l = insights.getData();
+//				if(l.size() > 0) {
+//					fbAcc.pageFansCountry = l.get(0).toString()
+//				}
+				//no longer in a property, create nodes 
+				
+				if(includeAnalytics == true) {
+					
+					Connection<JsonObject> insights = fbClient.fetchConnection("me/insights/page_fans_country", JsonObject.class, Parameter.with("period", "lifetime"))
+							List<JsonObject> l = insights.getData();
+					if(l.size() > 0) {
+						
+						JsonObject analytics = l.get(0);
+						JsonArray values = analytics.getJsonArray("values");
+						JsonObject val = values.getJsonObject(values.length() - 1).getJsonObject('value');
+						for(String countryName : val.keys()) {
+							int likesCount = val.getInt(countryName)
+									
+							FanCountry fc = new FanCountry()
+							if(scriptInterface != null) {
+								fc.generateURI(scriptInterface.getApp())
+							} else {
+								fc.generateURI((VitalApp)null)
+							}
+							fc.name = countryName
+							fc.likesCount = likesCount
+							
+							rl.results.add(new ResultElement(fc, 1D))
+							
+							Edge_hasFanCountry edge = new Edge_hasFanCountry().addSource(fbAcc).addDestination(fc)
+							if(scriptInterface != null) {
+								edge.generateURI(scriptInterface.getApp())
+							} else {
+								edge.generateURI((VitalApp)null)
+							}						
+							
+							rl.results.add(new ResultElement(edge, 1D))
+							
+						}
+						
+					}
 				}
 				
-				rl.results.add(new ResultElement(fbAcc, 1D))
 				
 			} else {
 				throw new Exception("Unknown action: ${action}")
