@@ -13,6 +13,7 @@ import ai.vital.vitalservice.query.ResultList
 import ai.vital.vitalsigns.model.VITAL_GraphContainerObject;
 import ai.vital.vitalsigns.model.VitalApp
 
+import com.restfb.Connection;
 import com.restfb.DefaultFacebookClient
 import com.restfb.FacebookClient.AccessToken
 import com.restfb.FacebookClient.DebugTokenError;
@@ -20,7 +21,8 @@ import com.restfb.FacebookClient.DebugTokenInfo;
 import com.restfb.Parameter;
 import com.restfb.types.Page
 import com.vitalai.domain.social.FacebookAccount;
-import com.restfb.Version;
+import com.restfb.Version
+import com.restfb.json.JsonObject;;
 
 class FacebookApiScript implements VitalPrimeGroovyScript {
 
@@ -109,15 +111,25 @@ class FacebookApiScript implements VitalPrimeGroovyScript {
 				
 				DefaultFacebookClient fbClient = new DefaultFacebookClient(accessToken)
 				
-				Page page = fbClient.fetchObject("me", Page.class, Parameter.with("fields", "name,id,category"));
+				Page page = fbClient.fetchObject("me", Page.class, Parameter.with("fields", "name,id,category,username,likes"));
 
 				FacebookAccount fbAcc = new FacebookAccount()
 				fbAcc.generateURI(scriptInterface != null ? scriptInterface.getApp() : (VitalApp)null)
-				fbAcc.facebookID = page.getId()
-				fbAcc.pictureURL = 'https://graph.facebook.com/' + page.getId() + '/picture?type=square'
-				fbAcc.name = page.getName()
-				fbAcc.category = page.getCategory()
 				fbAcc.accessToken = accessToken
+				fbAcc.category = page.getCategory()
+				fbAcc.facebookID = page.getId()
+				fbAcc.likesCount = page.getLikes() ? page.getLikes().intValue() : null
+				fbAcc.name = page.getName()
+				fbAcc.pictureURL = 'https://graph.facebook.com/' + page.getId() + '/picture?type=square'
+				fbAcc.username = page.getUsername()
+				fbAcc.tokenValid = true
+				
+				//get analytics
+				Connection<JsonObject> insights = fbClient.fetchConnection("me/insights/page_fans_country", JsonObject.class, Parameter.with("period", "lifetime"))
+				List<JsonObject> l = insights.getData();
+				if(l.size() > 0) {
+					fbAcc.pageFansCountry = l.get(0).toString()
+				}
 				
 				rl.results.add(new ResultElement(fbAcc, 1D))
 				

@@ -86,13 +86,18 @@ class TwitterApiScript implements VitalPrimeGroovyScript {
 			
 				TwitterAccount tw = new TwitterAccount()
 				tw.generateURI(scriptInterface.getApp())
+				tw.description = user.getDescription()
+				tw.followersCount = user.getFollowersCount()
+				tw.followingCount = user.getFriendsCount()
+				tw.likesCount = user.getFavouritesCount()
+				tw.name = user.getName()
 				tw.oAuthToken = accessToken.getToken()
 				tw.oAuthTokenSecret = accessToken.getTokenSecret()
 				tw.pictureURL = user.getProfileImageURLHttps()
-				tw.description = user.getDescription()
 				tw.screenName = user.getScreenName()
-				tw.name = user.getName()
+				tw.tweetsCount = user.getStatusesCount()
 				tw.twitterID = user.getId()
+				tw.tokenValid = true
 			
 				rl.results.add(new ResultElement(tw, 1D))
 			
@@ -145,13 +150,18 @@ class TwitterApiScript implements VitalPrimeGroovyScript {
 				
 				TwitterAccount tw = new TwitterAccount()
 				tw.generateURI(scriptInterface.getApp())
+				tw.description = user.getDescription()
+				tw.followersCount = user.getFollowersCount()
+				tw.followingCount = user.getFriendsCount()
+				tw.likesCount = user.getFavouritesCount()
+				tw.name = user.getName()
 				tw.oAuthToken = accessToken.getToken()
 				tw.oAuthTokenSecret = accessToken.getTokenSecret()
 				tw.pictureURL = user.getProfileImageURLHttps()
-				tw.description = user.getDescription()
 				tw.screenName = user.getScreenName()
-				tw.name = user.getName()
+				tw.tweetsCount = user.getStatusesCount()
 				tw.twitterID = user.getId()
+				tw.tokenValid = true
 				
 				rl.results.add(new ResultElement(tw, 1D))
 				

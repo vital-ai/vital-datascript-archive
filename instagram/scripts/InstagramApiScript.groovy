@@ -68,9 +68,13 @@ class InstagramApiScript implements VitalPrimeGroovyScript {
 				UserInfo userInfo = instagram.getCurrentUserInfo()
 				UserInfoData userInfoData = userInfo.getData()
 				ia.bio = userInfoData.getBio()
+				ia.followersCount = userInfoData.getCounts().getFollowedBy()
+				ia.followingCount = userInfoData.getCounts().getFollows()
 				ia.instagramID = userInfoData.getId()
+				ia.mediaCount = userInfoData.getCounts().getMedia()
 				ia.name = userInfoData.getFullName()
 				ia.pictureURL = userInfoData.getProfilePicture()
+				ia.tokenValid = true
 				ia.username = userInfoData.getUsername()
 				ia.website = userInfoData.getWebsite()
 				
@@ -113,9 +117,13 @@ class InstagramApiScript implements VitalPrimeGroovyScript {
 				UserInfo userInfo = instagram.getCurrentUserInfo()
 				UserInfoData userInfoData = userInfo.getData()
 				ia.bio = userInfoData.getBio()
+				ia.followersCount = userInfoData.getCounts().getFollowedBy()
+				ia.followingCount = userInfoData.getCounts().getFollows()
 				ia.instagramID = userInfoData.getId()
+				ia.mediaCount = userInfoData.getCounts().getMedia()
 				ia.name = userInfoData.getFullName()
 				ia.pictureURL = userInfoData.getProfilePicture()
+				ia.tokenValid = true
 				ia.username = userInfoData.getUsername()
 				ia.website = userInfoData.getWebsite()
 				
