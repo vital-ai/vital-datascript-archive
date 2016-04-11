@@ -138,7 +138,11 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 			} else if(action == 'deleteMember') {
 			
 				deleteMember(params, client, rl)
-				
+			
+			} else if(action == 'getDomains') {
+			
+				getDomains(params, client, rl)
+					
 			} else {
 				throw new Exception('Unknown action')
 			}
@@ -151,6 +155,54 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 		return rl;
 	}
 			
+	void getDomains(Map<String, Object> params, MailgunV3Client client, ResultList rl) throws Exception {
+	
+		Map<String, Object> res = client.getDomains();
+
+		List items = res.items
+		
+		rl.totalResults = res.get('total_count')
+		
+		for(Map<String, Object> o : items) {
+			
+			VITAL_GraphContainerObject gco = new VITAL_GraphContainerObject()
+			gco.generateURI((VitalApp) null)
+			
+			gco.created_at = o.get('created_at')
+			gco.name = o.get('name')
+			gco.state = o.get('state')
+			
+			rl.addResult(gco)
+			
+		}
+//		
+//		
+//		{
+//			"created_at": "Wed, 10 Jul 2013 19:26:52 GMT",
+//			"smtp_login": "postmaster@samples.mailgun.org",
+//			"name": "samples.mailgun.org",
+//			"smtp_password": "4rtqo4p6rrx9",
+//			"wildcard": true,
+//			"spam_action": "disabled",
+//			"state": "active"
+//		  }
+		
+				
+//		{
+//			"created_at": "Wed, 10 Jul 2013 19:26:52 GMT",
+//			"smtp_login": "postmaster@samples.mailgun.org",
+//			"name": "samples.mailgun.org",
+//			"smtp_password": "4rtqo4p6rrx9",
+//			"wildcard": true,
+//			"spam_action": "disabled",
+//			"state": "active"
+//		  }
+		
+		
+			
+	}
+	
+	
 	void deleteMember(Map<String, Object> params, MailgunV3Client client, ResultList rl) throws Exception {
 
 		String listName = params.get('listName')
@@ -622,6 +674,14 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 			DeleteMethod deleteMethod = new DeleteMethod(apiURL + '/lists/' + listName + '@' + domain + '/members/' + email)
 			
 			return handleJsonResponse(deleteMethod)
+			
+		}
+		
+		public Map<String, Object> getDomains() {
+			
+			GetMethod getMethod = new GetMethod(apiURL + '/domains')
+			
+			return handleJsonResponse(getMethod)
 			
 		}
 		
