@@ -150,14 +150,15 @@ class AmazonProductsSearchScript implements VitalPrimeGroovyScript {
 					node.name = i.getItemAttributes().getTitle()
 
 					Price price = i.getOfferSummary()?.getLowestNewPrice()
-					
-					if(price != null) {
-						
-						node."urn:priceFormatted" = price.getFormattedPrice()
-						node."urn:priceAmount" = price.getAmount().intValue()
-						node."urn:priceCurrencyCode" = price.getCurrencyCode()
-						
+
+					//http://docs.aws.amazon.com/AWSECommerceService/latest/DG/minimum-advertised-price.html					
+					if(price == null || price.getAmount() == null) {
+						continue
 					}
+					
+					node."urn:priceFormatted" = price.getFormattedPrice()
+					node."urn:priceAmount" = price.getAmount().intValue()
+					node."urn:priceCurrencyCode" = price.getCurrencyCode()
 
 					//description					
 					EditorialReviews reviews = i.getEditorialReviews()
