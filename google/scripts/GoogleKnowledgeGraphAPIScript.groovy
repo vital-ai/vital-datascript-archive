@@ -30,6 +30,8 @@ class GoogleKnowledgeGraphAPIScript implements VitalPrimeGroovyScript {
 			
 			String query = parameters.get('query')
 			
+			String types = parameters.get('types')
+			
 			Integer limit = 1
 			
 			if(parameters.get('limit' ) != null) {
@@ -39,6 +41,9 @@ class GoogleKnowledgeGraphAPIScript implements VitalPrimeGroovyScript {
 			
 			
 			String url = "https://kgsearch.googleapis.com/v1/entities:search?query=${URLEncoder.encode(query, 'UTF-8')}&key=${apiKey}&limit=${limit}&indent=true"
+			if(types) {
+				url += '&types=' + types
+			}
 			
 			getMethod = new GetMethod(url)
 			
