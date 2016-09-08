@@ -6,21 +6,22 @@ import ai.vital.query.querybuilder.VitalBuilder
 import ai.vital.vitalservice.VitalStatus;
 import ai.vital.vitalservice.query.ResultList
 import ai.vital.vitalservice.query.VitalSelectQuery
-import ai.vital.vitalsigns.VitalSigns;
+import ai.vital.vitalsigns.VitalSigns
 import ai.vital.vitalsigns.model.VitalSegment
-import ai.vital.vitalsigns.model.property.URIProperty;
-import ai.vital.domain.File
-import ai.vital.domain.File_PropertiesHelper;
+import ai.vital.vitalsigns.model.property.URIProperty
+import ai.vital.domain.FileNode
+import ai.vital.domain.FileNode_PropertiesHelper
 
 import com.amazonaws.auth.BasicAWSCredentials
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.CopyObjectRequest;
 import com.amazonaws.services.s3.model.CopyObjectResult;
 import com.amazonaws.services.s3.model.ObjectMetadata;
+import java.util.Map.Entry
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 import org.apache.commons.codec.binary.Base64
-
+import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
@@ -45,8 +46,6 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 	
 	static AmazonS3Client s3Client
 	
-	static VitalSegment filesSegment
-
 	static enum FileScope {
 		Public,
 		Private
@@ -102,12 +101,6 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 					secretKey = s3api.get('secretKey')
 					if(!secretKey) throw new Exception("No s3api.secretKey config param")
 					
-					String segmentID = s3api.get('segment')
-					if(!segmentID) throw new Exception("No segment config param")
-					
-					filesSegment = scriptInterface.getSegment(segmentID)
-					if(filesSegment == null) throw new Exception("Files segment not found: ${segmentID}")
-					
 					BasicAWSCredentials credentials = new BasicAWSCredentials(accessKey, secretKey)
 					s3Client = new AmazonS3Client(credentials)
 					
@@ -131,10 +124,19 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 			String action = parameters.get('action')
 			
 			if(!action) throw new Exception("No action parameter")
-			
 
-			String profile = parameters.get('profile')
-			if(!profile) throw new Exception("No profile parameter")
+			Class<? extends FileNode> fileClass = parameters.get('fileClass')
+			if(fileClass == null) throw new Exception("No fileClass parameter")
+			
+			String filesSegmentParam = parameters.get('filesSegment')
+			if(!filesSegmentParam) throw new Exception("No filesSegment parameter")
+			
+			String accountURI = parameters.get('accountURI')			
+			if(!accountURI) throw new Exception("No accountURI parameter")
+			
+			String profileURI = parameters.get('profileURI')
+			//profile URI is optional
+//			if(!profileURI) throw new Exception("No profileURI parameter")
 			
 			String _scope = parameters.get('scope')
 			if(!_scope) throw new Exception("No scope parameter")
@@ -147,8 +149,13 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 		
 			if(path.startsWith("/")) throw new Exception("Path must not start with slash")
 			
+			
+			VitalSegment filesSegment = scriptInterface.getSegment(filesSegmentParam)
+			if(filesSegment == null) throw new Exception("Segment not found: ${filesSegmentParam}")
+			
 			//edit should not require paths etc
 			if(action == 'edit') {
+				
 				
 				String fileURI = parameters.get('fileURI')
 				if(!fileURI) throw new Exception("No fileURI param")
@@ -157,10 +164,13 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				if(!name) throw new Exception("No name param!")
 				
 				String fileType = parameters.get('fileType')
-				if(!fileType) throw new Exception("No fileType param")
+//				if(!fileType) throw new Exception("No fileType param")
+				
+				Map<String> extraProps = parameters.get('extraProps')
+				if(extraProps == null) throw new Exception("No extraProps map property")
 				
 				//select file
-				File f = selectFileByURI(scriptInterface, fileURI)
+				FileNode f = selectFileByURI(scriptInterface, filesSegment, fileClass, fileURI)
 				if(f == null) throw new Exception("File not found: ${fileURI}")
 				
 				String s3URL = f.fileURL
@@ -176,7 +186,10 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				String key = matcher.group(2)
 				
 				//check if owner has changed
-				String currentOwner = f.owner
+				String currentAccountURI = f.accountURI
+				
+				String currentProfileURI = f.profileURI
+				
 				FileScope currentScope = FileScope.fromString(f.fileScope.toString())
 				
 				String currentPath = f.fileName
@@ -188,19 +201,19 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				f.fileType = fileType
 				f.timestamp = System.currentTimeMillis()
 				
-				//these 3 params determine physcial location
+				//these 4 params determine physcial location
 				f.fileScope = scope.name()
 				f.fileName = path
-				f.owner = profile
+				f.accountURI = accountURI
+				f.profileURI = profileURI
 				
 				boolean moved = false
 				
-				if(currentOwner != profile || currentScope != scope || currentPath != path) {
+				if(currentAccountURI != accountURI || currentProfileURI != profileURI || currentScope != scope || currentPath != path) {
 					
 					//path changes only if scope changes
-					FileURL currentURL = fileURL(scriptInterface, currentScope, currentOwner, currentPath)
-					FileURL newURL = fileURL(scriptInterface, scope, profile, path)
-					
+					FileURL currentURL = fileURL(scriptInterface, currentScope, currentAccountURI, currentProfileURI, currentPath)
+					FileURL newURL = fileURL(scriptInterface, scope, accountURI, profileURI, path)
 					
 					//first move file, then save node
 					s3Client.copyObject(currentURL.bucket, currentURL.relativePath, newURL.bucket, newURL.relativePath)
@@ -214,38 +227,53 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 					
 				}
 				
+				for(Entry<String, Object> e : extraProps.entrySet()) {
+					f.setProperty(e.key, e.value)
+				}
+				
 				scriptInterface.save(filesSegment, f)
 				rl.addResult(f)
-				rl.status = VitalStatus.withOKMessage("File updated ${moved ? 'and moved into another location' : ''}");
+				rl.status = VitalStatus.withOKMessage("FileNode updated ${moved ? 'and resource moved into another location' : ''}");
 				return rl
 				
 				
 			}
 			
 			
-			FileURL fileURL = fileURL(scriptInterface, scope, profile, path)
+			FileURL fileURL = fileURL(scriptInterface, scope, accountURI, profileURI, path)
 						
 			if(action == 'create') {
+				
+				FileNode prototype = parameters.get('prototype')
+				if(prototype == null) throw new Exception("No prototype (FileNode instance) param")
 				
 				String base64 = parameters.get('base64')
 				byte[] data = parameters.get('data')
 				String sourceBucket = parameters.get('sourceBucket')
 				String sourceKey = parameters.get('sourceKey')
+				
+				//arbitrary URL the file would be downloaded from
+				String sourceURL = parameters.get('sourceURL')
+				String sourceUsername = parameters.get('sourceUsername')
+				String sourcePassword = parameters.get('sourcePassword')
+				
 				Boolean deleteOnSuccess = parameters.get('deleteOnSuccess')
 				if(deleteOnSuccess == null) deleteOnSuccess = false
 				int i= 0
 				if(base64) i++
 				if(data) i++
 				if(sourceBucket || sourceKey) i++
+				if(sourceURL) i++
+				
 				if(i == 0) throw new Exception("No base64, data nor (sourceBucket, sourceKey) params") 
 				
-				if( i > 1) throw new Exception("Too many data sources, expected exactly one of: base64, data nor (sourceBucket, sourceKey) params")
+				if( i > 1) throw new Exception("Too many data sources, expected exactly one of: base64, data, sourceURL  or (sourceBucket, sourceKey) params")
 				
 				String name = parameters.get('name')
 				if(!name) throw new Exception("No name param!")
 				
 				String fileType = parameters.get('fileType')
-				if(!fileType) throw new Exception("No fileType param")
+//				if(!fileType) throw new Exception("No fileType param")
 				
 				Boolean overwrite = parameters.get('overwrite')
 				if(overwrite == null) throw new Exception("No overwrite boolean param")
@@ -256,9 +284,9 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 									
 				} else {
 				
-					List<File> existing = selectFiles(scriptInterface, fileURL);
+					List<FileNode> existing = selectFiles(scriptInterface, filesSegment, fileClass, fileURL);
 				
-					if(existing.size() > 0) throw new Exception("File already exists: ${fileURL.relativePath}")
+					if(existing.size() > 0) throw new Exception("File already exists: ${fileURL.fullURL}")
 					
 				}
 				
@@ -272,6 +300,8 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 					ObjectMetadata om = s3Client.getObjectMetadata(sourceBucket, sourceKey)
 					if(om == null) throw new Exception("No object metadata!")
 					
+				} else if(sourceURL) {
+					
 				} else if(base64) {
 				
 					data = Base64.decodeBase64(base64)
@@ -284,28 +314,64 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 
 				if(overwrite) {
 					
-					deleteFile(scriptInterface, fileURL);
+					deleteFile(scriptInterface, filesSegment, fileClass, fileURL);
 					
 				}
+				
+				ObjectMetadata om = new ObjectMetadata()
+				
+				if(fileType) {
+					om.setContentType(fileType)
+				}
+				
+			
 				
 				if(sourceBucket || sourceKey) {
 					
 					s3Client.copyObject(sourceBucket, sourceKey, fileURL.bucket, fileURL.relativePath)
 					
+				} else if(sourceURL) {
+				
+
+					InputStream inputStream = null
+					URLConnection uc = null
+					
+					try {
+						
+						if(sourceUsername) {
+							
+							URL url = new URL(sourceURL);
+							uc = url.openConnection();
+							String userpass = sourceUsername + ":" + sourcePassword;
+							String basicAuth = "Basic " + Base64.encodeBase64String(userpass.getBytes())
+							uc.setRequestProperty ("Authorization", basicAuth);
+							inputStream = uc.getInputStream();
+							
+						} else {
+						
+							inputStream = new URL(sourceURL).openStream()
+							
+						}
+						
+						
+						s3Client.putObject(fileURL.bucket, fileURL.relativePath, inputStream, om)
+						
+					} finally {
+						IOUtils.closeQuietly(inputStream)
+					}
+					
 				} else {
+				
+					om.setContentLength(data.length)
 				
 					ByteArrayInputStream bis = new ByteArrayInputStream(data)
 				
-					ObjectMetadata om = new ObjectMetadata()
-					
-					om.setContentLength(data.length)
-					
 					s3Client.putObject(fileURL.bucket, fileURL.relativePath, bis, om)
 				
 				}
 
 				//create new node
-				File newNode = new File();
+				FileNode newNode = prototype
 				newNode.generateURI(scriptInterface.getApp())
 				newNode.name = name
 				newNode.fileScope = scope.name()
@@ -313,7 +379,8 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				newNode.timestamp = System.currentTimeMillis()
 				newNode.fileName = path
 				newNode.fileType = fileType
-				newNode.owner = profile
+				newNode.accountURI = accountURI
+				newNode.profileURI = profileURI
 				
 				scriptInterface.save(filesSegment, newNode)
 //				if(saveRL.status.status != VitalStatus.Status.ok) throw new Exception("Error when saving new file node: ${saveRL.status.message}")
@@ -328,7 +395,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				
 			} else if(action == 'delete') {
 			
-				int del = deleteFile(scriptInterface, fileURL)
+				int del = deleteFile(scriptInterface, filesSegment, fileClass, fileURL)
 				
 				rl.status.successes = del
 			
@@ -340,33 +407,14 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				
 			} else if(action == 'get') {
 			
-				List<File> files = selectFiles(scriptInterface, fileURL)
+				List<FileNode> files = selectFiles(scriptInterface, filesSegment, fileClass, fileURL)
 				
-				for(File f : files) {
+				for(FileNode f : files) {
 					rl.addResult(f);
 				}		
 			
 				rl.totalResults = files.size()
 			
-			} else if(action == 'edit') {
-			
-				String name = parameters.get('name')
-				if(!name) throw new Exception("No name param!")
-				
-				String fileType = parameters.get('fileType')
-				if(!fileType) throw new Exception("No fileType param")
-			
-				List<File> existing = selectFiles(scriptInterface, fileURL);
-			
-				if(existing.size() == 0) throw new Exception("File not found: ${fileURL.relativePath}")
-
-				
-				//edit the first item
-				File firstMatch = existing.get(0)
-				
-				
-				
-				
 			} else {
 				throw new Exception("Unknown action: ${action}")
 			}
@@ -381,26 +429,26 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 	}
 	
 	
-	private int deleteFile(VitalPrimeScriptInterface scriptInterface, FileURL fileURL) throws Exception {
+	private int deleteFile(VitalPrimeScriptInterface scriptInterface, VitalSegment filesSegment, Class<? extends FileNode> fileClass, FileURL fileURL) throws Exception {
 		
-		List<File> l = selectFiles(scriptInterface, fileURL);
+		List<FileNode> l = selectFiles(scriptInterface, filesSegment, fileClass, fileURL);
 		
 		if(l.size() == 0) return 0
 		List<URIProperty> uris = []
-		for(File f : l) {
+		for(FileNode f : l) {
 			uris.add(URIProperty.withString(f.URI))
 		}
 		
 		VitalStatus status = scriptInterface.delete(uris)
 		if(status.status != VitalStatus.Status.ok) {
-			throw new Exception("Error when deleting existing file: ${status.message}")
+			throw new Exception("Error when deleting existing file node: ${status.message}")
 		}
 		
 		return l.size()
 		
 	}
 	
-	private List<File> selectFiles(VitalPrimeScriptInterface scriptInterface, FileURL fileURL) throws Exception {
+	private List<FileNode> selectFiles(VitalPrimeScriptInterface scriptInterface, VitalSegment filesSegment, Class<? extends FileNode> fileClass, FileURL fileURL) throws Exception {
 		
 		VitalSelectQuery sq = new VitalBuilder().query {
 			SELECT {
@@ -408,30 +456,30 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				value offset: 0
 				value limit: 10
 				
-				node_constraint { File.class }
+				node_constraint { fileClass }
 					
-				node_constraint { ((File_PropertiesHelper) File.props()).fileURL.equalTo(fileURL.getFullURL()) }
+				node_constraint { ((FileNode_PropertiesHelper) FileNode.props()).fileURL.equalTo(fileURL.getFullURL()) }
 					
 			}
 		}.toQuery()
 		
 		ResultList rl = scriptInterface.query(sq)
 		if(rl.status.status != VitalStatus.Status.ok) {
-			throw new Exception("Error when selecting existing file: ${rl.status.message}")
+			throw new Exception("Error when selecting existing file nodes: ${rl.status.message}")
 		}
 		
 //		if(rl.results.size() > 1) throw new Exception("More than 1 file with path exists: ${fileURL}") 
 		
-		List<File> l = []
+		List<FileNode> l = []
 		
-		for(File f : rl.iterator(File.class)) {
+		for(FileNode f : rl.iterator(FileNode.class)) {
 			l.add(f)
 		}
 		
 		return l
 	}
 	
-	private File selectFileByURI(VitalPrimeScriptInterface scriptInterface, String fileURI) {
+	private FileNode selectFileByURI(VitalPrimeScriptInterface scriptInterface, VitalSegment filesSegment, Class<? extends FileNode> fileClass, String fileURI) {
 		
 		VitalSelectQuery sq = new VitalBuilder().query {
 			
@@ -441,7 +489,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				value offset: 0
 				value limit: 10
 				
-				node_constraint { File.class }
+				node_constraint { fileClass }
 				
 				node_constraint { "URI eq ${fileURI}"} 
 				
@@ -454,18 +502,25 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 			throw new Exception("Error when selecting existing file: ${rl.status.message}")
 		}
 		
-		return (File) rl.first()
+		return (FileNode) rl.first()
 		
 	}
 	
-	private FileURL fileURL(VitalPrimeScriptInterface scriptInterface, FileScope scope, String profile, String path) {
+	private FileURL fileURL(VitalPrimeScriptInterface scriptInterface, FileScope scope, String accountURI, String profileURI, String path) {
 		
 		String orgID = scriptInterface.getOrganization().organizationID.toString()
 		String appID = scriptInterface.getApp().appID.toString()
 		
 		FileURL url = new FileURL()
 		url.bucket = scope == FileScope.Public ? publicBucketName : privateBucketName
-		url.relativePath = orgID + '/' + appID + '/' + URLEncoder.encode(profile, 'UTF-8') + '/' + path
+		
+		String profilePart = ''
+		if(profileURI != null) {
+			profilePart = URLEncoder.encode(profileURI, 'UTF-8') + '/'
+		} 
+		
+		url.relativePath = orgID + '/' + appID + '/' + URLEncoder.encode(accountURI, 'UTF-8') + '/' + profilePart + path
+		
 		return url
 		
 		

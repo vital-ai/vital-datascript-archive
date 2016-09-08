@@ -16,6 +16,8 @@ import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 
 import java.util.Map.Entry
+import java.util.regex.Matcher
+import java.util.regex.Pattern;
 
 import org.apache.commons.codec.binary.Base64
 import org.apache.commons.httpclient.HttpClient
@@ -33,6 +35,8 @@ import org.apache.commons.httpclient.methods.multipart.FilePartSource
 import org.apache.commons.httpclient.methods.multipart.MultipartRequestEntity
 import org.apache.commons.httpclient.methods.multipart.Part
 import org.apache.commons.httpclient.methods.multipart.StringPart
+import org.apache.commons.io.FileUtils
+import org.apache.commons.io.IOUtils;
 import org.codehaus.jackson.map.ObjectMapper
 
 import ai.vital.prime.groovy.VitalPrimeGroovyScript
@@ -43,6 +47,9 @@ import ai.vital.vitalservice.query.ResultList
 import ai.vital.vitalsigns.model.VITAL_GraphContainerObject
 import ai.vital.vitalsigns.model.VitalApp
 
+import com.amazonaws.auth.BasicAWSCredentials
+import com.amazonaws.services.s3.AmazonS3Client
+import com.amazonaws.services.s3.model.S3Object;
 import com.vitalai.domain.genericapp.MailingListMember
 
 /**
@@ -78,6 +85,8 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 		return httpConnectionManager;
 
 	}
+	
+	static Pattern s3URLPattern = Pattern.compile('^s3\\:\\/\\/([^\\/]+)\\/(.+)$', Pattern.CASE_INSENSITIVE)
 	
 	@Override
 	public void onUnload() {
@@ -142,7 +151,17 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 			} else if(action == 'getDomains') {
 			
 				getDomains(params, client, rl)
-					
+				
+			//get events
+			} else if(action == 'getEvents') {
+			
+				getEvents(params, client, rl)		
+			
+			} else if(action == 'getEmail') {
+			
+				//returns json email
+				getEmail(params, client, rl)
+				
 			} else {
 				throw new Exception('Unknown action')
 			}
@@ -153,6 +172,51 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 		}
 
 		return rl;
+	}
+			
+	void getEmail(Map<String, Object> params, MailgunV3Client client, ResultList rl) throws Exception {
+	
+		String emailURL = params.emailURL
+		
+		if(!emailURL) throw new Exception("No emailURL param")
+		
+		Map<String, Object> res = client.getEmail(emailURL)
+		
+		VITAL_GraphContainerObject gco = new VITAL_GraphContainerObject()
+		gco.generateURI((VitalApp) null)
+			
+		gco.json = JsonOutput.toJson(res)
+			
+		rl.addResult(gco)
+			
+	}
+	
+	void getEvents(Map<String, Object> params, MailgunV3Client client, ResultList rl) throws Exception {
+		
+		List<String> eventTypes = params.eventTypes
+		Integer maxPagesLimit = params.maxPagesLimit
+		Integer limit = params.limit
+		Date begin = params.begin
+		Date end = params.end
+		String recipient = params.recipient
+		
+		List<Map<String, Object>> resPages = client.getEvents(eventTypes, recipient, limit, maxPagesLimit, begin, end)
+		
+		for(Map<String, Object> res : resPages) {
+			List items = res.items
+			for(Map<String, Object> o : items) {
+				
+				VITAL_GraphContainerObject gco = new VITAL_GraphContainerObject()
+				gco.generateURI((VitalApp) null)
+						
+				gco.json = JsonOutput.toJson(o)
+						
+				rl.addResult(gco)
+			}
+			
+		}
+		
+		
 	}
 			
 	void getDomains(Map<String, Object> params, MailgunV3Client client, ResultList rl) throws Exception {
@@ -290,7 +354,6 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 
 
 		Map<String, byte[]> inlineByteAttachements = null
-
 		Map inlineByteAttachementsMap = params.get('inlineByteAttachements')
 
 		//base 64 encoding
@@ -308,9 +371,24 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 		}
 
 		//don't use them
-		Map<String, File> inlineFileAttachments = null
+		Map<String, String> s3Attachments = params.get('s3Attachments')
+		String s3AccessKey = params.get('s3AccessKey')
+		String s3SecretKey = params.get('s3SecretKey')
+		
+		if(s3Attachments != null && s3Attachments.size() > 0) {
+			//s3 config required
+			if(!s3AccessKey) throw new Exception("No s3AccessKey param, required with s3Attachments")
+			if(!s3SecretKey) throw new Exception("No s3SecretKey param, required with s3Attachments")
+			
+			for(Entry<String, String> e : s3Attachments.entrySet()) {
+				if( s3URLPattern.matcher(e.getValue()).matches() ) throw new Exception("invalid s3 url: ${e.getValue()} - must match ${s3URLPattern.pattern()}")
+			}
+			
+			//validate s3 url
+			
+		}
 
-		SendMessageResponse resp = client.sendMessage(from, to, cc, subject, text, html, inlineByteAttachements, inlineFileAttachments)
+		SendMessageResponse resp = client.sendMessage(from, to, cc, subject, text, html, inlineByteAttachements, s3Attachments, s3AccessKey, s3SecretKey)
 
 		rl.status = VitalStatus.withOKMessage("Email ID: ${resp.id}, message: ${resp.message}")
 		
@@ -341,7 +419,7 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 		}
 
 
-		public SendMessageResponse sendMessage(String from, String to, String cc, String subject, String text, String html) throws IOException {
+		public SendMessageResponse sendMessageX(String from, String to, String cc, String subject, String text, String html) throws IOException {
 
 			PostMethod postMethod = new PostMethod(urlBase + "messages");
 
@@ -426,8 +504,12 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 
 
 		public SendMessageResponse sendMessage(String from, String to, String cc, String subject, String text, String html,
-				Map<String, byte[]> inlineByteAttachments, Map<String, File> inlineFileAttachments) throws IOException {
+				Map<String, byte[]> inlineByteAttachments, Map<String, String> s3Attachments, String s3AccessKey, String s3SecretKey) throws IOException {
 
+			List<File> tempFiles = []
+			
+			try {
+				
 			PostMethod postMethod = new PostMethod(urlBase + "messages");
 
 			Part[] parts = null;//new Part[6 + attachments.size()];
@@ -475,13 +557,43 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 			}
 
 
-			if(inlineFileAttachments != null) {
+			if(s3Attachments != null) {
 
-				for( Iterator<Entry<String, File>> iterator = inlineFileAttachments.entrySet().iterator(); iterator.hasNext(); ) {
-
-					Entry<String, File> next = iterator.next();
-
-					list.add(new FilePart("inline", new FilePartSource(next.getKey(), next.getValue())));
+				AmazonS3Client s3Client = new AmazonS3Client(new BasicAWSCredentials(s3AccessKey, s3SecretKey))
+				
+				for( Entry<String, String> e : s3Attachments.entrySet() ) {
+					
+					Matcher m = s3URLPattern.matcher(e.getValue())
+					m.matches()
+					
+					InputStream inS = null
+					FileOutputStream fos = null
+					File f = null
+					String key = m.group(2)
+					String fname = key
+					int lastSlash = fname.lastIndexOf('/')
+					if(lastSlash >= 0) fname = fname.substring(lastSlash + 1)
+					
+					try {
+						f = File.createTempFile("s3object", ".temp")
+						f.deleteOnExit()
+						tempFiles.add(f)
+						
+						
+						
+						S3Object s3Object = s3Client.getObject(m.group(1), key)
+						inS = s3Object.getObjectContent()
+						
+						fos = new FileOutputStream(f)
+						
+						IOUtils.copy(inS, fos)
+						
+					} finally {
+						IOUtils.closeQuietly(fos)
+						IOUtils.closeQuietly(inS)
+					}
+					
+					list.add(new FilePart("attachment", fname, f));
 
 				}
 
@@ -522,6 +634,11 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 
 			}
 
+			} finally {
+				for(File f : tempFiles) {
+					FileUtils.deleteQuietly(f)
+				}
+			}
 		}
 
 		public Map<String, Object> getMailingList(String listName) throws IOException {
@@ -529,6 +646,116 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 			GetMethod getMethod = new GetMethod(apiURL + '/lists/' + listName + '@' + domain )
 			
 			return (Map<String, Object>) handleJsonResponse(getMethod)
+			
+		}
+		
+		public Map<String, Object> listMailingLists() throws IOException {
+			
+			GetMethod getMethod = new GetMethod(apiURL + '/lists')
+			
+			return (Map<String, Object>) handleJsonResponse(getMethod)
+		}
+		
+		
+		public Map<String, Object>getEmail(String emailURL) {
+			
+			GetMethod getMethod = new GetMethod(emailURL)
+			
+			return (Map<String, Object>) handleJsonResponse(getMethod)
+			
+		}
+		
+		/**
+		 * 
+		 * @param eventTypes
+		 * @param limit (page limit)
+		 * @param maxPagesLimit
+		 * @param begin
+		 * @param end
+		 * @return
+		 */
+		public List<Map<String, Object>> getEvents(List<String> eventTypes, String recipient, Integer limit, Integer maxPagesLimit, Date begin, Date end) {
+			
+			String url = urlBase + 'events'
+			
+			List<String> params = []
+			
+			if(eventTypes) {
+				params.add( 'event=' + e(eventTypes.join(' OR ')) )
+			}
+			
+			if(recipient) {
+				params.add( 'to=' + e(recipient) )
+			}
+			
+			if(limit != null) {
+				params.add( 'limit=' + limit)
+			}
+			
+			if(begin != null) {
+				//linux epoch
+				params.add('begin=' + (begin.getTime() / 1000L))
+			}
+			
+			if(end != null) {
+				params.add('end=', (end.getTime() / 1000L))
+			}
+
+			//based on mailgun api tests
+			if(begin != null && end == null) {
+				params.add('ascending=yes')
+			}
+			
+			if(begin == null && end != null) {
+				params.add('ascending=no')
+			}
+			
+						
+			if(params.size() > 0) {
+				url = url + '?' + params.join('&')
+			}
+			
+
+			
+			
+			List<Map<String, Object>> pages = []
+			
+			while(url != null) {
+				
+				GetMethod getMethod = new GetMethod(url)
+				
+				Map<String, Object> res = handleJsonResponse(getMethod)
+
+				List items = res.items
+				
+				if(items.size() == 0) {
+					url = null
+					continue
+				} else {
+				
+					pages.add(res)
+					
+					if(maxPagesLimit != null && pages.size() >= maxPagesLimit.intValue() ) {
+						
+						//enough
+						url = null
+						continue
+						
+					}
+					
+					url = res.paging?.next
+					//get next page of results
+				
+				}
+				
+				//check if limit or 
+								
+				
+			}
+			
+			return pages
+			
+			
 			
 		}
 		
