@@ -332,9 +332,6 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 					
 					s3Client.copyObject(sourceBucket, sourceKey, fileURL.bucket, fileURL.relativePath)
 					
-					ObjectMetadata x = s3Client.getObjectMetadata(fileURL.bucket, fileURL.relativePath)
-					fileLength = x.getContentLength()
-					
 				} else if(sourceURL) {
 				
 
@@ -359,9 +356,8 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 						}
 						
 						
-						PutObjectResult putResult = s3Client.putObject(fileURL.bucket, fileURL.relativePath, inputStream, om)
-						fileLength = putResult.getMetadata().getContentLength()
-						
+						s3Client.putObject(fileURL.bucket, fileURL.relativePath, inputStream, om)
+												
 					} finally {
 						IOUtils.closeQuietly(inputStream)
 					}
@@ -372,10 +368,13 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				
 					ByteArrayInputStream bis = new ByteArrayInputStream(data)
 				
-					PutObjectResult putResult = s3Client.putObject(fileURL.bucket, fileURL.relativePath, bis, om)
-					fileLength = putResult.getMetadata().getContentLength()
+					s3Client.putObject(fileURL.bucket, fileURL.relativePath, bis, om)
+					
 				}
 
+				ObjectMetadata x = s3Client.getObjectMetadata(fileURL.bucket, fileURL.relativePath)
+				fileLength = x.getContentLength()
+				
 				//create new node
 				FileNode newNode = prototype
 				newNode.generateURI(scriptInterface.getApp())
