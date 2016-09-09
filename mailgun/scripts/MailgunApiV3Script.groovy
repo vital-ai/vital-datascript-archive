@@ -381,7 +381,7 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 			if(!s3SecretKey) throw new Exception("No s3SecretKey param, required with s3Attachments")
 			
 			for(Entry<String, String> e : s3Attachments.entrySet()) {
-				if( s3URLPattern.matcher(e.getValue()).matches() ) throw new Exception("invalid s3 url: ${e.getValue()} - must match ${s3URLPattern.pattern()}")
+				if( !s3URLPattern.matcher(e.getValue()).matches() ) throw new Exception("invalid s3 url: ${e.getValue()} - must match ${s3URLPattern.pattern()}")
 			}
 			
 			//validate s3 url
@@ -570,9 +570,7 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 					FileOutputStream fos = null
 					File f = null
 					String key = m.group(2)
-					String fname = key
-					int lastSlash = fname.lastIndexOf('/')
-					if(lastSlash >= 0) fname = fname.substring(lastSlash + 1)
+					String fname = e.getKey()
 					
 					try {
 						f = File.createTempFile("s3object", ".temp")

@@ -16,7 +16,9 @@ import com.amazonaws.auth.BasicAWSCredentials
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.CopyObjectRequest;
 import com.amazonaws.services.s3.model.CopyObjectResult;
-import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.ObjectMetadata
+import com.amazonaws.services.s3.model.PutObjectResult;
+
 import java.util.Map.Entry
 import java.util.regex.Matcher
 import java.util.regex.Pattern
@@ -324,11 +326,14 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 					om.setContentType(fileType)
 				}
 				
-			
+				Long fileLength = null
 				
 				if(sourceBucket || sourceKey) {
 					
 					s3Client.copyObject(sourceBucket, sourceKey, fileURL.bucket, fileURL.relativePath)
+					
+					ObjectMetadata x = s3Client.getObjectMetadata(fileURL.bucket, fileURL.relativePath)
+					fileLength = x.getContentLength()
 					
 				} else if(sourceURL) {
 				
@@ -354,7 +359,8 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 						}
 						
 						
-						s3Client.putObject(fileURL.bucket, fileURL.relativePath, inputStream, om)
+						PutObjectResult putResult = s3Client.putObject(fileURL.bucket, fileURL.relativePath, inputStream, om)
+						fileLength = putResult.getMetadata().getContentLength()
 						
 					} finally {
 						IOUtils.closeQuietly(inputStream)
@@ -366,8 +372,8 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				
 					ByteArrayInputStream bis = new ByteArrayInputStream(data)
 				
-					s3Client.putObject(fileURL.bucket, fileURL.relativePath, bis, om)
-				
+					PutObjectResult putResult = s3Client.putObject(fileURL.bucket, fileURL.relativePath, bis, om)
+					fileLength = putResult.getMetadata().getContentLength()
 				}
 
 				//create new node
@@ -377,6 +383,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				newNode.fileScope = scope.name()
 				newNode.fileURL = fileURL.getFullURL()
 				newNode.timestamp = System.currentTimeMillis()
+				newNode.fileLength = fileLength
 				newNode.fileName = path
 				newNode.fileType = fileType
 				newNode.accountURI = accountURI
