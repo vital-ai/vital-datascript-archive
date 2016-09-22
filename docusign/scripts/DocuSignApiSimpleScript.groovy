@@ -173,7 +173,7 @@ class DocuSignApiSimpleScript implements VitalPrimeGroovyScript {
 					]
 				]
 				
-				r.emailSubject = "Please sign the NDA"
+				r.emailSubject = "Please sign the Document"
 				
 				List dateSignedTabs = []
 				if(dateSignedAnchor) {
