@@ -3,6 +3,7 @@ package commons.scripts
 import java.util.Map;
 
 import com.vitalai.domain.social.Tweet;
+import com.vitalai.domain.social.TwitterAccount
 
 import commons.scripts.HaleySpeechToText.ResultElement;
 
@@ -18,6 +19,7 @@ import twitter4j.ResponseList;
 import twitter4j.Status;
 import twitter4j.Twitter
 import twitter4j.TwitterFactory
+import twitter4j.User
 import ai.vital.prime.groovy.VitalPrimeGroovyScript;
 import ai.vital.prime.groovy.VitalPrimeScriptInterface;
 import ai.vital.vitalservice.VitalStatus;
@@ -202,8 +204,43 @@ class TwitterSearchScript implements VitalPrimeGroovyScript {
 					
 				}
 
+			} else if(type == 'users_lookup') {
+			
+				List<Long> userIds = parameters.userIds ? parameters.userIds : null
+				List<String> screenNames = parameters.screenNames ? parameters.screenNames : null
+			
+				//resolves twitter user by either screenName or userId
+				if(userIds == null && screenNames == null) {
+					throw new Exception("One of userIds nor screenNames required")
+				} else if(userIds != null && screenNames != null) {
+					throw new Exception("Expected exactly one of userIds or screenNames, cannot handle both")
+				}
 				
-								
+				ResponseList<User> users = null
+				if(userIds) {
+					users = twitter.lookupUsers(userIds as Long[])
+				} else {
+					users = twitter.lookupUsers(screenNames as String[])
+				}
+				
+				for(User user : users) {
+					
+					TwitterAccount tw = new TwitterAccount()
+					tw.generateURI((VitalApp)null)
+					tw.description = user.getDescription()
+					tw.followersCount = user.getFollowersCount()
+					tw.followingCount = user.getFriendsCount()
+					tw.likesCount = user.getFavouritesCount()
+					tw.name = user.getName()
+					tw.pictureURL = user.getProfileImageURLHttps()
+					tw.screenName = user.getScreenName()
+					tw.tweetsCount = user.getStatusesCount()
+					tw.twitterID = user.getId()
+					
+					rl.addResult(tw)
+					
+				}
+			
 //				Example Values: 12345
 //				
 //				screen_name
@@ -261,10 +298,6 @@ class TwitterSearchScript implements VitalPrimeGroovyScript {
 			} else {
 				throw new RuntimeException("Unknown searchType value: ${type}")
 			}
-			
-						
-			
-			
 			
 		} catch(Exception e) {
 			rl.status = VitalStatus.withError("Twitter search failed: ${e.localizedMessage}")
