@@ -120,16 +120,16 @@ class GoogleArticleSearchScript implements VitalPrimeGroovyScript {
 				
 				if(cse_thumbnail != null && ( cse_thumbnail.size() > 0 && imageObjects != null && imageObjects.size() > 0) || (cse_image != null && cse_image.size() > 0) ) {
 					
-					Map img = cse_thumbnail[0]
+					Map img = ( cse_thumbnail != null && cse_thumbnail.size() > 0 ) ? cse_thumbnail[0] : null
 					
-					Map imgObj = imageObjects ? imageObjects[0] : null
+					Map imgObj = ( imageObjects && imageObjects.size() > 0 ) ? imageObjects[0] : null
 					
-					Map cseImg = cse_image ? cse_image[0] : null
+					Map cseImg = ( cse_image && cse_image.size() > 0 ) ? cse_image[0] : null
 
-					article.imageURL1 =cseImg? cseImg.src : (imgObj  ? imgObj.url : null )
-					article.imageURL = img.src
-					article.heightPx = img.height ? Integer.parseInt(img.height) : null
-					article.widthPx = img.width ? Integer.parseInt(img.width) : null
+					article.imageURL1 =cseImg ? cseImg.src : (imgObj  ? imgObj.url : null )
+					article.imageURL = img?.src
+					article.heightPx = ( img != null && img.height ) ? Integer.parseInt(img.height) : null
+					article.widthPx =  ( img != null && img.width ) ? Integer.parseInt(img.width) : null
 					article.imageTitle = imgObj ? filterGoogleText(imgObj.name) : null
 							
 				}
