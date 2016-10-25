@@ -345,6 +345,7 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 		String to = params.get('to')
 		if(!to) throw new Exception("No 'to' param")
 		String cc = params.get('cc')
+		String bcc = params.get('bcc')
 		String subject = params.get('subject')
 		if(!subject) throw new Exception("No 'subject' param")
 		String text = params.get('text')
@@ -388,7 +389,7 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 			
 		}
 
-		SendMessageResponse resp = client.sendMessage(from, to, cc, subject, text, html, inlineByteAttachements, s3Attachments, s3AccessKey, s3SecretKey)
+		SendMessageResponse resp = client.sendMessage(from, to, cc, bcc, subject, text, html, inlineByteAttachements, s3Attachments, s3AccessKey, s3SecretKey)
 
 		rl.status = VitalStatus.withOKMessage("Email ID: ${resp.id}, message: ${resp.message}")
 		
@@ -503,7 +504,7 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 
 
 
-		public SendMessageResponse sendMessage(String from, String to, String cc, String subject, String text, String html,
+		public SendMessageResponse sendMessage(String from, String to, String cc, String bcc, String subject, String text, String html,
 				Map<String, byte[]> inlineByteAttachments, Map<String, String> s3Attachments, String s3AccessKey, String s3SecretKey) throws IOException {
 
 			List<File> tempFiles = []
@@ -526,6 +527,10 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 
 			if(cc != null && !cc.isEmpty()) {
 				list.add(new StringPart("cc", cc, "UTF-8"));
+			}
+			
+			if(bcc != null && !bcc.isEmpty()) {
+				list.add(new StringPart("bcc", bcc, "UTF-8"));
 			}
 
 			if(subject != null && !subject.isEmpty()) {
