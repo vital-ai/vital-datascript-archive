@@ -29,8 +29,14 @@ class GoogleDirectionsSearchScript implements VitalPrimeGroovyScript {
 			String endAddress = params.endAddress
 			if(!endAddress) throw new Exception("No endAddress param")
 			
-			GetMethod getMethod = new GetMethod('https://maps.googleapis.com/maps/api/directions/json?origin=' + URLEncoder.encode(startAddress, 'UTF-8') + '&destination=' + URLEncoder.encode(endAddress, 'UTF-8'))
+			String key = params.key
 			
+			String url = 'https://maps.googleapis.com/maps/api/directions/json?origin=' + URLEncoder.encode(startAddress, 'UTF-8') + '&destination=' + URLEncoder.encode(endAddress, 'UTF-8')
+			if(key) {
+				url += ( '&key=' + URLEncoder.encode(key, 'UTF-8'))
+			}
+			
+			GetMethod getMethod = new GetMethod(url)
 			
 			int statusCode = 0
 			
@@ -65,12 +71,16 @@ class GoogleDirectionsSearchScript implements VitalPrimeGroovyScript {
 			String status = respObject.status
 			
 			if(! status.equalsIgnoreCase("OK")) {
-				throw new Exception("Directions service error: " + status + ' - ' + respObject.error_message)
+				//serialize error for better
+				rl.status = VitalStatus.withError("Directions service status: " + status + ' - ' + respObject.error_message)
+				VITAL_GraphContainerObject r = new VITAL_GraphContainerObject().generateURI((VitalApp) null)
+				r.errorJson = responseBody
+				rl.addResult(r)
+				return rl
 			}
 			
 			VITAL_GraphContainerObject r = new VITAL_GraphContainerObject().generateURI((VitalApp) null)
 			r.directionsJson = responseBody
-			
 			rl.addResult(r)
 			
 		} catch(Exception e) {
