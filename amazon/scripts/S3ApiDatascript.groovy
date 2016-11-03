@@ -258,7 +258,12 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				String sourceURL = parameters.get('sourceURL')
 				String sourceUsername = parameters.get('sourceUsername')
 				String sourcePassword = parameters.get('sourcePassword')
+
 				
+				//using old files api
+				String tempFileURI = parameters.get('tempFileURI')
+				String tempFileName = parameters.get('tempFileName')
+								
 				Boolean deleteOnSuccess = parameters.get('deleteOnSuccess')
 				if(deleteOnSuccess == null) deleteOnSuccess = false
 				int i= 0
@@ -266,10 +271,11 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				if(data) i++
 				if(sourceBucket || sourceKey) i++
 				if(sourceURL) i++
+				if(tempFileURI || tempFileName) i++
 				
-				if(i == 0) throw new Exception("No base64, data nor (sourceBucket, sourceKey) params") 
+				if(i == 0) throw new Exception("No base64, data, (sourceBucket, sourceKey) nor (tempFileURI, tempFileName) params") 
 				
-				if( i > 1) throw new Exception("Too many data sources, expected exactly one of: base64, data, sourceURL  or (sourceBucket, sourceKey) params")
+				if( i > 1) throw new Exception("Too many data sources, expected exactly one of: base64, data, sourceURL, (sourceBucket, sourceKey) or (tempFileURI, tempFileName) params")
 				
 				String name = parameters.get('name')
 				if(!name) throw new Exception("No name param!")
@@ -309,6 +315,11 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 					data = Base64.decodeBase64(base64)
 				
 				} else if(data){
+				
+				} else if(tempFileName || tempFileURI) {
+				
+					if(!tempFileURI) throw new Exception("tempFileURI must be provided with tempFileName")
+					if(!tempFileName) throw new Exception("tempFileName must be provided with tempFileURI")
 				
 				}
 				
@@ -361,6 +372,20 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 					} finally {
 						IOUtils.closeQuietly(inputStream)
 					}
+				
+				} else if(tempFileURI) {
+				
+					File tempFile = scriptInterface.getFile(tempFileURI, tempFileName)
+					if(tempFile == null) throw new Exception("Temp file not found, URI: ${tempFileURI}, name: ${tempFileName}")
+				
+					InputStream inputStream = null
+					
+					try {
+						inputStream = new FileInputStream(tempFile)
+						s3Client.putObject(fileURL.bucket, fileURL.relativePath, inputStream, om)
+					} finally {
+						IOUtils.closeQuietly(inputStream)
+					}
 					
 				} else {
 				
@@ -397,6 +422,10 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 					
 					s3Client.deleteObject(sourceBucket, sourceKey)
 					
+				}
+				
+				if((tempFileURI || tempFileName) && deleteOnSuccess.booleanValue()) {
+					scriptInterface.deleteFile(tempFileURI, tempFileName)
 				}
 				
 			} else if(action == 'delete') {
