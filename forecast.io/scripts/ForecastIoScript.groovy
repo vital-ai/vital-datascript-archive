@@ -1,5 +1,7 @@
 package commons.scripts
 
+import groovy.json.JsonOutput;
+import groovy.json.JsonSlurper
 import java.text.DecimalFormat
 import java.util.Map
 
@@ -58,9 +60,24 @@ class ForecastIoScript implements VitalPrimeGroovyScript {
 				throw new Exception("forecast.io HTTP error: ${statusCode2} - ${responseBody2}")
 			}
 			
+			Map parsed = new JsonSlurper().parseText(responseBody2)
+			
+			TimeZone tz = TimeZone.getTimeZone(parsed.timezone)
+			
+			List dailyData = parsed.daily.data;
+			
+			GregorianCalendar gcal = new GregorianCalendar(tz)
+			
+			for(int i = 0 ; i < dailyData.size(); i++) {
+				
+				Map daily = dailyData[i]
+				gcal.setTimeInMillis( (long) daily.time * 1000L )
+				daily.dayOfWeek = gcal.get(GregorianCalendar.DAY_OF_WEEK) 
+				
+			}
 			
 			VITAL_GraphContainerObject r = new VITAL_GraphContainerObject().generateURI((VitalApp) null)			
-			r.jsonData = responseBody2
+			r.jsonData = JsonOutput.toJson(parsed)
 			
 			rl.addResult(r, 1d)
 						
