@@ -40,6 +40,11 @@ import ai.vital.vitalsigns.model.VITAL_Node
 import ai.vital.vitalsigns.model.VitalApp
 import commons.scripts.AmazonProductsSearchScript.ReviewsRating;
 
+/**
+ * By default images URLs are converted into https: version based on http://stackoverflow.com/a/37577067 
+ * @author Derek
+ *
+ */
 class AmazonProductsSearchScript implements VitalPrimeGroovyScript {
 
 	static boolean useIframeMethod = true 
@@ -136,6 +141,8 @@ class AmazonProductsSearchScript implements VitalPrimeGroovyScript {
 				if(limit <=0 ) throw new Exception("limit param must be > 0")
 			}
 			
+			Boolean httpsImages = parameters.get('httpsImages')
+			if(httpsImages == null) httpsImages = true
 			
 			Boolean includeRating = parameters.get('includeRating')
 			if(includeRating == null) includeRating = false
@@ -190,9 +197,9 @@ class AmazonProductsSearchScript implements VitalPrimeGroovyScript {
 
 					node.asin = i.getASIN()
 					
-					node.smallImageURL = i.getSmallImage()?.getURL()
-					node.mediumImageURL = i.getMediumImage()?.getURL()
-					node.largeImageURL = i.getLargeImage()?.getURL()
+					node.smallImageURL = imageURLFilter( i.getSmallImage()?.getURL(), httpsImages )
+					node.mediumImageURL = imageURLFilter( i.getMediumImage()?.getURL(), httpsImages )
+					node.largeImageURL = imageURLFilter( i.getLargeImage()?.getURL(), httpsImages )
 
 					node.url = i.getDetailPageURL()
 					
@@ -320,6 +327,16 @@ class AmazonProductsSearchScript implements VitalPrimeGroovyScript {
 		
 		return rl
 		
+	}
+	
+	private final static String HTTP_PREFIX = 'http://ecx.' 
+	static String imageURLFilter( String inputURL, boolean httpsImages ) {
+		if(!httpsImages) return inputURL
+		if( ! inputURL ) return inputURL
+		if(inputURL.startsWith(HTTP_PREFIX)) {
+			return 'https://images-na.ssl-' + inputURL.substring(HTTP_PREFIX.length())			
+		}
+		return inputURL
 	}
 	
 	public static class ReviewsRating {
