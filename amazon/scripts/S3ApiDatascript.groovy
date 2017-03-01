@@ -3,6 +3,7 @@ package commons.scripts
 import ai.vital.prime.groovy.VitalPrimeGroovyScript
 import ai.vital.prime.groovy.VitalPrimeScriptInterface
 import ai.vital.query.querybuilder.VitalBuilder
+import ai.vital.vitalservice.VitalService;
 import ai.vital.vitalservice.VitalStatus;
 import ai.vital.vitalservice.query.ResultList
 import ai.vital.vitalservice.query.VitalSelectQuery
@@ -12,6 +13,7 @@ import ai.vital.vitalsigns.model.property.URIProperty
 import ai.vital.domain.FileNode
 import ai.vital.domain.FileNode_PropertiesHelper
 
+import com.amazonaws.ClientConfiguration;
 import com.amazonaws.auth.BasicAWSCredentials
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.CopyObjectRequest;
@@ -103,8 +105,14 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 					secretKey = s3api.get('secretKey')
 					if(!secretKey) throw new Exception("No s3api.secretKey config param")
 					
+					ClientConfiguration clientConfiguration = new ClientConfiguration()
+					
+					//short connection and socket timeouts optimized for aimp processing, original values 50000
+					clientConfiguration.setConnectionTimeout(10000)
+					clientConfiguration.setSocketTimeout(10000)
+					
 					BasicAWSCredentials credentials = new BasicAWSCredentials(accessKey, secretKey)
-					s3Client = new AmazonS3Client(credentials)
+					s3Client = new AmazonS3Client(credentials, clientConfiguration)
 					
 				}
 				
@@ -130,6 +138,8 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 			Class<? extends FileNode> fileClass = parameters.get('fileClass')
 			if(fileClass == null) throw new Exception("No fileClass parameter")
 			
+			String externalServiceName = parameters.get('externalServiceName')
+			
 			String filesSegmentParam = parameters.get('filesSegment')
 			if(!filesSegmentParam) throw new Exception("No filesSegment parameter")
 			
@@ -151,9 +161,22 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 		
 			if(path.startsWith("/")) throw new Exception("Path must not start with slash")
 			
+			VitalService service = null
+			if(externalServiceName != null) {
+				service = scriptInterface.getVitalService(externalServiceName)
+				if(service == null) throw new Exception("External service not found: ${externalServiceName}")
+			}
 			
-			VitalSegment filesSegment = scriptInterface.getSegment(filesSegmentParam)
-			if(filesSegment == null) throw new Exception("Segment not found: ${filesSegmentParam}")
+			VitalSegment filesSegment = null
+			
+			if(service != null) {
+				filesSegment = service.getSegment(filesSegmentParam)
+				if(filesSegment == null) throw new Exception("Segment not found: ${filesSegmentParam} in external service: ${externalServiceName}")
+			} else {
+				filesSegment = scriptInterface.getSegment(filesSegmentParam)
+				if(filesSegment == null) throw new Exception("Segment not found: ${filesSegmentParam}")
+			}
+			
 			
 			//edit should not require paths etc
 			if(action == 'edit') {
@@ -172,7 +195,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				if(extraProps == null) throw new Exception("No extraProps map property")
 				
 				//select file
-				FileNode f = selectFileByURI(scriptInterface, filesSegment, fileClass, fileURI)
+				FileNode f = selectFileByURI(scriptInterface, service, filesSegment, fileClass, fileURI)
 				if(f == null) throw new Exception("File not found: ${fileURI}")
 				
 				String s3URL = f.fileURL
@@ -214,8 +237,8 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				if(currentAccountURI != accountURI || currentProfileURI != profileURI || currentScope != scope || currentPath != path) {
 					
 					//path changes only if scope changes
-					FileURL currentURL = fileURL(scriptInterface, currentScope, currentAccountURI, currentProfileURI, currentPath)
-					FileURL newURL = fileURL(scriptInterface, scope, accountURI, profileURI, path)
+					FileURL currentURL = fileURL(scriptInterface, service, currentScope, currentAccountURI, currentProfileURI, currentPath)
+					FileURL newURL = fileURL(scriptInterface, service, scope, accountURI, profileURI, path)
 					
 					//first move file, then save node
 					s3Client.copyObject(currentURL.bucket, currentURL.relativePath, newURL.bucket, newURL.relativePath)
@@ -233,7 +256,11 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 					f.setProperty(e.key, e.value)
 				}
 				
-				scriptInterface.save(filesSegment, f)
+				if(service != null) {
+					service.save(filesSegment, f, true)
+				} else {
+					scriptInterface.save(filesSegment, f)
+				}
 				rl.addResult(f)
 				rl.status = VitalStatus.withOKMessage("FileNode updated ${moved ? 'and resource moved into another location' : ''}");
 				return rl
@@ -242,7 +269,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 			}
 			
 			
-			FileURL fileURL = fileURL(scriptInterface, scope, accountURI, profileURI, path)
+			FileURL fileURL = fileURL(scriptInterface, service, scope, accountURI, profileURI, path)
 						
 			if(action == 'create') {
 				
@@ -292,7 +319,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 									
 				} else {
 				
-					List<FileNode> existing = selectFiles(scriptInterface, filesSegment, fileClass, fileURL);
+					List<FileNode> existing = selectFiles(scriptInterface, service, filesSegment, fileClass, fileURL);
 				
 					if(existing.size() > 0) throw new Exception("File already exists: ${fileURL.fullURL}")
 					
@@ -327,7 +354,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 
 				if(overwrite) {
 					
-					deleteFile(scriptInterface, filesSegment, fileClass, fileURL);
+					deleteFile(scriptInterface, service, filesSegment, fileClass, fileURL);
 					
 				}
 				
@@ -402,7 +429,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				
 				//create new node
 				FileNode newNode = prototype
-				newNode.generateURI(scriptInterface.getApp())
+				newNode.generateURI(service != null ? service.getApp() : scriptInterface.getApp())
 				newNode.name = name
 				newNode.fileScope = scope.name()
 				newNode.fileURL = fileURL.getFullURL()
@@ -413,7 +440,12 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				newNode.accountURI = accountURI
 				newNode.profileURI = profileURI
 				
-				scriptInterface.save(filesSegment, newNode)
+				if(service != null) {
+					service.save(filesSegment, newNode, true)	
+				} else {
+					scriptInterface.save(filesSegment, newNode)
+				}
+				
 //				if(saveRL.status.status != VitalStatus.Status.ok) throw new Exception("Error when saving new file node: ${saveRL.status.message}")
 				
 				rl.addResult(newNode)
@@ -430,7 +462,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				
 			} else if(action == 'delete') {
 			
-				int del = deleteFile(scriptInterface, filesSegment, fileClass, fileURL)
+				int del = deleteFile(scriptInterface, service, filesSegment, fileClass, fileURL)
 				
 				rl.status.successes = del
 			
@@ -442,7 +474,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 				
 			} else if(action == 'get') {
 			
-				List<FileNode> files = selectFiles(scriptInterface, filesSegment, fileClass, fileURL)
+				List<FileNode> files = selectFiles(scriptInterface, service, filesSegment, fileClass, fileURL)
 				
 				for(FileNode f : files) {
 					rl.addResult(f);
@@ -464,9 +496,9 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 	}
 	
 	
-	private int deleteFile(VitalPrimeScriptInterface scriptInterface, VitalSegment filesSegment, Class<? extends FileNode> fileClass, FileURL fileURL) throws Exception {
+	private int deleteFile(VitalPrimeScriptInterface scriptInterface, VitalService service, VitalSegment filesSegment, Class<? extends FileNode> fileClass, FileURL fileURL) throws Exception {
 		
-		List<FileNode> l = selectFiles(scriptInterface, filesSegment, fileClass, fileURL);
+		List<FileNode> l = selectFiles(scriptInterface, service, filesSegment, fileClass, fileURL);
 		
 		if(l.size() == 0) return 0
 		List<URIProperty> uris = []
@@ -474,7 +506,13 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 			uris.add(URIProperty.withString(f.URI))
 		}
 		
-		VitalStatus status = scriptInterface.delete(uris)
+		VitalStatus status = null
+		if(service != null) {
+			status = service.delete(uris)	
+		} else {
+			status = scriptInterface.delete(uris)
+		}
+		
 		if(status.status != VitalStatus.Status.ok) {
 			throw new Exception("Error when deleting existing file node: ${status.message}")
 		}
@@ -483,7 +521,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 		
 	}
 	
-	private List<FileNode> selectFiles(VitalPrimeScriptInterface scriptInterface, VitalSegment filesSegment, Class<? extends FileNode> fileClass, FileURL fileURL) throws Exception {
+	private List<FileNode> selectFiles(VitalPrimeScriptInterface scriptInterface, VitalService service, VitalSegment filesSegment, Class<? extends FileNode> fileClass, FileURL fileURL) throws Exception {
 		
 		VitalSelectQuery sq = new VitalBuilder().query {
 			SELECT {
@@ -498,7 +536,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 			}
 		}.toQuery()
 		
-		ResultList rl = scriptInterface.query(sq)
+		ResultList rl = service != null ? service.query(sq) : scriptInterface.query(sq)
 		if(rl.status.status != VitalStatus.Status.ok) {
 			throw new Exception("Error when selecting existing file nodes: ${rl.status.message}")
 		}
@@ -514,7 +552,7 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 		return l
 	}
 	
-	private FileNode selectFileByURI(VitalPrimeScriptInterface scriptInterface, VitalSegment filesSegment, Class<? extends FileNode> fileClass, String fileURI) {
+	private FileNode selectFileByURI(VitalPrimeScriptInterface scriptInterface, VitalService service, VitalSegment filesSegment, Class<? extends FileNode> fileClass, String fileURI) {
 		
 		VitalSelectQuery sq = new VitalBuilder().query {
 			
@@ -532,7 +570,14 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 			
 		}.toQuery()
 		
-		ResultList rl = scriptInterface.query(sq)
+		ResultList rl = null
+		
+		if(service != null) {
+			rl = service.query(sq)
+		} else {
+			rl = scriptInterface.query(sq)
+		}
+		
 		if(rl.status.status != VitalStatus.Status.ok) {
 			throw new Exception("Error when selecting existing file: ${rl.status.message}")
 		}
@@ -541,10 +586,10 @@ class S3ApiDatascript implements VitalPrimeGroovyScript {
 		
 	}
 	
-	private FileURL fileURL(VitalPrimeScriptInterface scriptInterface, FileScope scope, String accountURI, String profileURI, String path) {
+	private FileURL fileURL(VitalPrimeScriptInterface scriptInterface, VitalService service, FileScope scope, String accountURI, String profileURI, String path) {
 		
-		String orgID = scriptInterface.getOrganization().organizationID.toString()
-		String appID = scriptInterface.getApp().appID.toString()
+		String orgID = service != null ? service.getOrganization().organizationID.toString() : scriptInterface.getOrganization().organizationID.toString()
+		String appID = service != null ? service.getApp().appID.toString() : scriptInterface.getApp().appID.toString()
 		
 		FileURL url = new FileURL()
 		url.bucket = scope == FileScope.Public ? publicBucketName : privateBucketName
