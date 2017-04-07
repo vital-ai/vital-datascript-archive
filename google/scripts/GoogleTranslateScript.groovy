@@ -1,23 +1,23 @@
 package commons.scripts
 
-import groovy.json.JsonSlurper;
+import groovy.json.JsonSlurper
 
-import java.util.Map;
+import org.apache.commons.httpclient.HttpClient
+import org.apache.commons.httpclient.methods.PostMethod
+import org.apache.commons.httpclient.methods.multipart.MultipartRequestEntity
+import org.apache.commons.httpclient.methods.multipart.Part
+import org.apache.commons.httpclient.methods.multipart.StringPart
+import org.apache.commons.io.IOUtils
 
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.NameValuePair;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.io.IOUtils;
-
-import com.vitalai.domain.nlp.Document;
-import com.vitalai.domain.nlp.Edge_hasTranslation;
-
-import ai.vital.prime.groovy.VitalPrimeGroovyScript;
-import ai.vital.prime.groovy.VitalPrimeScriptInterface;
-import ai.vital.vitalservice.VitalStatus;
+import ai.vital.prime.groovy.VitalPrimeGroovyScript
+import ai.vital.prime.groovy.VitalPrimeScriptInterface
+import ai.vital.vitalservice.VitalStatus
 import ai.vital.vitalservice.query.ResultElement
-import ai.vital.vitalservice.query.ResultList;
+import ai.vital.vitalservice.query.ResultList
 import ai.vital.vitalsigns.model.VitalApp
+
+import com.vitalai.domain.nlp.Document
+import com.vitalai.domain.nlp.Edge_hasTranslation
 
 class GoogleTranslateScript implements VitalPrimeGroovyScript {
 
@@ -58,19 +58,35 @@ class GoogleTranslateScript implements VitalPrimeGroovyScript {
 			postMethod.addRequestHeader("X-HTTP-Method-Override", "GET")
 			postMethod.addRequestHeader("Accept-Charset", "UTF-8")
 			
-			List<NameValuePair> params = [
-				new NameValuePair('key', key),
-				new NameValuePair('format', format),
-				new NameValuePair('prettyprint', 'true'),
-				new NameValuePair('q', body),
-				new NameValuePair('target', target)
+			List<Part> parts = [
+				new StringPart("key", key, "UTF-8"),
+				new StringPart('format', format, "UTF-8"),
+				new StringPart('prettyprint', 'true', "UTF-8"),
+				new StringPart('q', body, "UTF-8"),
+				new StringPart('target', target, "UTF-8")
 			]
-			
+
 			if(lang) {
-				params.add(new NameValuePair('source', lang))
-			}
+				parts.add(
+					new StringPart('source', lang, "UTF-8")
+				) 
+			}			
 			
-			postMethod.setRequestBody(params as NameValuePair[])
+			//https://groups.google.com/forum/#!topic/google-translate-api/5ChxNAOCrGI
+//			List<NameValuePair> params = [
+//				new NameValuePair('key', key),
+//				new NameValuePair('format', format),
+//				new NameValuePair('prettyprint', 'true'),
+//				new NameValuePair('q', body),
+//				new NameValuePair('target', target)
+//			]
+//			
+//			if(lang) {
+//				params.add(new NameValuePair('source', lang))
+//			}
+//			postMethod.setRequestBody(params as NameValuePair[])
+			
+			postMethod.setRequestEntity(new MultipartRequestEntity(parts as Part[], postMethod.getParams()))
 			
 			int status = client.executeMethod(postMethod)
 			if(status != 200) {
