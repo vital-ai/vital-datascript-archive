@@ -54,7 +54,7 @@ class GoogleTranslateScript implements VitalPrimeGroovyScript {
 			
 			String lang = document.lang?.toString()
 
-			postMethod = new PostMethod("https://www.googleapis.com/language/translate/v2")
+			postMethod = new PostMethod("https://translation.googleapis.com/language/translate/v2")
 			postMethod.addRequestHeader("X-HTTP-Method-Override", "GET")
 			postMethod.addRequestHeader("Accept-Charset", "UTF-8")
 			
