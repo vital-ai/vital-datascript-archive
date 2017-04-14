@@ -120,14 +120,14 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 			String action = params.get('action')
 			if(!action) throw new Exception("No 'action' param")
 			
-			boolean validateEmail = action == 'validateEmail'
+			boolean validateEmailAction = action == 'validateEmail'
 			
 			String apiKey = params.get('apiKey')
 			String publicApiKey = params.get('publicApiKey')
 			
 			String effectiveKey = null
 			
-			if(validateEmail) {
+			if(validateEmailAction) {
 				if(!publicApiKey) throw new Exception("No 'publicApiKey' param")
 				effectiveKey = publicApiKey
 			} else {
