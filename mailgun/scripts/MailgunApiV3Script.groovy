@@ -120,13 +120,25 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 			String action = params.get('action')
 			if(!action) throw new Exception("No 'action' param")
 			
+			boolean validateEmail = action == 'validateEmail'
+			
 			String apiKey = params.get('apiKey')
-			if(!apiKey) throw new Exception("No 'apiKey' param")
+			String publicApiKey = params.get('publicApiKey')
+			
+			String effectiveKey = null
+			
+			if(validateEmail) {
+				if(!publicApiKey) throw new Exception("No 'publicApiKey' param")
+				effectiveKey = publicApiKey
+			} else {
+				if(!apiKey) throw new Exception("No 'apiKey' param")
+				effectiveKey = apiKey
+			}
 
 			String 	domain = params.get('domain')
 			if(!domain) throw new Exception("No 'domain' param")
 			
-			MailgunV3Client client = new MailgunV3Client(domain, apiKey, initConnectionManager())			
+			MailgunV3Client client = new MailgunV3Client(domain, effectiveKey, initConnectionManager())			
 			
 			if(action == 'sendEmail') {
 				
@@ -162,6 +174,10 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 				//returns json email
 				getEmail(params, client, rl)
 				
+			} else if(action == 'validateEmail') {
+			
+				validateEmail(params, client, rl)
+				
 			} else {
 				throw new Exception('Unknown action')
 			}
@@ -173,6 +189,37 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 
 		return rl;
 	}
+			
+	void validateEmail(Map<String, Object> params, MailgunV3Client client, ResultList rl) throws Exception {
+		
+		String email = params.get('email')
+		if(!email) throw new Exception("No email")
+		
+		Map<String, Object> res = client.validateEmail(email)
+
+		VITAL_GraphContainerObject gco = new VITAL_GraphContainerObject()
+		gco.generateURI((VitalApp) null)
+		
+		gco.valid = res.is_valid
+		gco.address = res.address
+		gco.json = JsonOutput.toJson(res)
+		
+		rl.addResult(gco)
+		
+//		{
+//			"is_valid": true,
+//			"address": "foo@mailgun.net",
+//			"parts": {
+//				"display_name": null //Deprecated Field, will always be null
+//				"local_part": "foo",
+//				"domain": "mailgun.net",
+//			},
+//			"did_you_mean": null
+//		}
+		
+		
+	}
+	
 			
 	void getEmail(Map<String, Object> params, MailgunV3Client client, ResultList rl) throws Exception {
 	
@@ -660,9 +707,19 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 		}
 		
 		
-		public Map<String, Object>getEmail(String emailURL) {
+		public Map<String, Object> getEmail(String emailURL) {
 			
 			GetMethod getMethod = new GetMethod(emailURL)
+			
+			return (Map<String, Object>) handleJsonResponse(getMethod)
+			
+		}
+		
+		public Map<String, Object> validateEmail(String email) throws IOException {
+			
+			List<String> params = ['address=' + e(email)]
+			
+			GetMethod getMethod = new GetMethod(apiURL + '/address/validate?' + params.join('&'))
 			
 			return (Map<String, Object>) handleJsonResponse(getMethod)
 			
