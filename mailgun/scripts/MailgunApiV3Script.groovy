@@ -440,6 +440,12 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 
 		rl.status = VitalStatus.withOKMessage("Email ID: ${resp.id}, message: ${resp.message}")
 		
+		VITAL_GraphContainerObject res = new VITAL_GraphContainerObject()
+		res.generateURI((VitalApp) null)
+		res.id = resp.id
+		res.message = resp.message
+		rl.addResult(res)
+		
 	}
 
 	static class MailgunV3Client {
