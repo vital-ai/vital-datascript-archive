@@ -5,6 +5,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -399,6 +401,11 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 		if(!text) throw new Exception("No 'text' param")
 		String html = params.get('html')
 		if(!html) throw new Exception("No 'html' param")
+		
+		
+		Boolean trackingOpens = params.get('trackingOpens')
+		
+		Map<String, String> customData = params.get('customData')
 
 
 		Map<String, byte[]> inlineByteAttachements = null
@@ -436,7 +443,10 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 			
 		}
 
-		SendMessageResponse resp = client.sendMessage(from, to, cc, bcc, subject, text, html, inlineByteAttachements, s3Attachments, s3AccessKey, s3SecretKey)
+		Date deliveryTime = params.get('deliveryTime')
+		Collection<String> tags = params.get('tags')
+		
+		SendMessageResponse resp = client.sendMessage(from, to, cc, bcc, subject, text, html, inlineByteAttachements, s3Attachments, s3AccessKey, s3SecretKey, customData, deliveryTime, tags, trackingOpens)
 
 		rl.status = VitalStatus.withOKMessage("Email ID: ${resp.id}, message: ${resp.message}")
 		
@@ -472,6 +482,14 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 			urlBase = apiURL + '/' + domain + '/';
 		}
 
+		private DateFormat rfc2822DateFormat
+		
+		private DateFormat getRFC2822DateFormat() {
+			if(rfc2822DateFormat == null) {
+				rfc2822DateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z")
+			}
+			return rfc2822DateFormat
+		}
 
 		public SendMessageResponse sendMessageX(String from, String to, String cc, String subject, String text, String html) throws IOException {
 
@@ -558,7 +576,8 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 
 
 		public SendMessageResponse sendMessage(String from, String to, String cc, String bcc, String subject, String text, String html,
-				Map<String, byte[]> inlineByteAttachments, Map<String, String> s3Attachments, String s3AccessKey, String s3SecretKey) throws IOException {
+				Map<String, byte[]> inlineByteAttachments, Map<String, String> s3Attachments, String s3AccessKey, String s3SecretKey, 
+				Map<String, String> customData, Date deliveryTime, Collection<String> tags, Boolean trackingOpens) throws IOException {
 
 			List<File> tempFiles = []
 			
@@ -598,7 +617,37 @@ class MailgunApiV3Script implements VitalPrimeGroovyScript, VitalPrimeScriptHook
 				list.add(new StringPart("html", html, "UTF-8"));
 			}
 
-
+			//should be json
+			if(customData != null && !customData.isEmpty()) {
+				
+				for(Entry<String, String> entry : customData.entrySet()) {
+					
+					String key = entry.getKey()
+					String value = entry.getValue()
+					
+					list.add(new StringPart("v:${key}", value, "UTF-8"))
+					
+				}
+				
+			}
+			
+			if(trackingOpens && trackingOpens.booleanValue()) {
+				list.add(new StringPart("o:tracking-opens", 'True', "UTF-8"))
+			}
+			
+			
+			if(deliveryTime != null) {
+				list.add(new StringPart("o:deliverytime", getRFC2822DateFormat().format(deliveryTime), "UTF-8"))
+			}
+			
+			if(tags != null) {
+				for(String tag : tags) {
+					if(tag) {
+						list.add(new StringPart("o:tag", tag, "UTF-8"))
+					}
+				}
+			}
+			
 			if(inlineByteAttachments != null) {
 
 				for( Iterator<Entry<String, byte[]>> iterator = inlineByteAttachments.entrySet().iterator(); iterator.hasNext(); ) {
